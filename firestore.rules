@@ -1,0 +1,310 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for static shape validations conforming to our schema specification
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\+]+$');
+    }
+
+    function incoming() { 
+      return request.resource.data; 
+    }
+
+    function existing() { 
+      return resource.data; 
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminUser() {
+      return isSignedIn()
+        && (
+          (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin')
+          || (request.auth.token.email == 'ajzakir004@gmail.com' || request.auth.token.email == 'riktazhossain@gmail.com')
+        );
+    }
+
+    function isOwner(phoneId) {
+      return isSignedIn() && request.auth.uid == phoneId;
+    }
+
+    // PROFILE VALIDATIONS
+    function isValidProfile(data) {
+      return data.keys().hasAll(['name', 'role', 'approved'])
+        && data.name is string
+        && (data.role == 'admin' || data.role == 'operator')
+        && data.approved is bool;
+    }
+
+    match /profiles/{phone} {
+      // Allow read access for login lookup & duplicate phone registration checks
+      allow get: if true;
+      allow list: if true;
+
+      // Unauthenticated operator self-registration rule
+      // Must start as operator role, unapproved, and matching parent path ID
+      allow create: if isValidId(phone) 
+        && isValidProfile(incoming()) 
+        && (!incoming().keys().contains('id') || incoming().id == phone)
+        && (!incoming().keys().contains('phone') || incoming().phone == phone)
+        && (
+          (incoming().role == 'operator' && incoming().approved == false) ||
+          (incoming().role == 'admin' && incoming().approved == true && phone == '01931355398')
+        );
+
+      // Allow admin updates / approval toggles. We also allow password updates or creations.
+      allow update: if isValidId(phone)
+        && (
+          isAdminUser()
+          || (
+            isOwner(phone)
+            && isValidProfile(incoming())
+            && incoming().role == existing().role
+            && incoming().approved == existing().approved
+          )
+        );
+
+      allow delete: if isAdminUser();
+    }
+
+    // CUSTOMER VALIDATIONS
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'total_orders', 'total_spent', 'total_returns', 'created_at'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 64
+        && data.name is string && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 20
+        && data.total_orders is number && data.total_orders >= 0
+        && data.total_spent is number
+        && data.total_returns is number && data.total_returns >= 0
+        && data.created_at is string && data.created_at.size() <= 64
+        // check optional fields if present
+        && (!data.keys().contains('address') || (data.address is string && data.address.size() <= 500))
+        && (!data.keys().contains('last_order_date') || data.last_order_date == null || (data.last_order_date is string && data.last_order_date.size() <= 64));
+    }
+
+    match /customers/{customerId} {
+      allow read: if true;
+      allow create: if isValidId(customerId) && isValidCustomer(incoming()) && incoming().id == customerId;
+      allow update: if isValidId(customerId) && isValidCustomer(incoming()) && incoming().id == customerId;
+      allow delete: if true;
+    }
+
+    // ORDER VALIDATIONS
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+        'id', 'customer_id', 'customer_name', 'customer_phone', 
+        'operator_id', 'operator_name', 'amount', 'status', 
+        'product_cost', 'delivery_cost', 'other_costs', 'total_cost', 
+        'profit', 'order_date'
+      ])
+        && data.keys().size() <= 15
+        && data.id is string && data.id.size() <= 64
+        && data.customer_id is string && data.customer_id.size() <= 64
+        && data.customer_name is string && data.customer_name.size() <= 100
+        && data.customer_phone is string && data.customer_phone.size() <= 20
+        && data.operator_id is string && data.operator_id.size() <= 64
+        && data.operator_name is string && data.operator_name.size() <= 100
+        && data.amount is number
+        && (data.status == 'delivery' || data.status == 'return')
+        // Logical bounds on costs
+        && data.product_cost is number && data.product_cost >= 0
+        && data.delivery_cost is number && data.delivery_cost >= 0
+        && data.other_costs is number && data.other_costs >= 0
+        // Correct total cost math
+        && data.total_cost == data.product_cost + data.delivery_cost + data.other_costs
+        // Correct profit margin calculus
+        && data.profit == data.amount - data.total_cost
+        // Check order status constraints matching user instructions:
+        // Positive amounts for standard deliveries, negative amounts for returns.
+        && ( (data.status == 'delivery' && data.amount >= 0) || (data.status == 'return' && data.amount <= 0) )
+        && data.order_date is string && data.order_date.size() <= 64
+        && (!data.keys().contains('notes') || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if isValidId(orderId) && isValidOrder(incoming()) && incoming().id == orderId;
+      allow update: if isValidId(orderId) && isValidOrder(incoming()) && incoming().id == orderId;
+      allow delete: if true;
+    }
+
+    // COST SETTINGS VALIDATIONS
+    function isValidCostSettings(data) {
+      return data.keys().hasAll(['product_cost_percent', 'default_delivery_cost', 'other_fixed_cost', 'updated_at'])
+        && data.keys().size() <= 5
+        && data.product_cost_percent is number && data.product_cost_percent >= 0 && data.product_cost_percent <= 100
+        && data.default_delivery_cost is number && data.default_delivery_cost >= 0
+        && data.other_fixed_cost is number && data.other_fixed_cost >= 0
+        && data.updated_at is string && data.updated_at.size() <= 64;
+    }
+
+    match /cost_settings/{document} {
+      allow read: if true;
+      allow write: if isValidCostSettings(incoming());
+    }
+
+    // STAFF FILE VALIDATIONS
+    function isValidStaff(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'salary'])
+        && data.keys().size() <= 10
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 20
+        && data.salary is number && data.salary >= 0
+        && (!data.keys().contains('address') || (data.address is string && data.address.size() <= 500))
+        && (!data.keys().contains('duty_hours') || data.duty_hours is number)
+        && (!data.keys().contains('holidays_weekly') || data.holidays_weekly is number)
+        && (!data.keys().contains('id_card') || (data.id_card is string && data.id_card.size() <= 200))
+        && (!data.keys().contains('document') || (data.document is string && data.document.size() <= 2000))
+        && (!data.keys().contains('created_at') || (data.created_at is string && data.created_at.size() <= 64));
+    }
+
+    match /staff/{staffId} {
+      allow read: if true;
+      allow write: if isValidId(staffId) && isValidStaff(incoming());
+    }
+
+    // STAFF SALARY DISBURSEMENT VALIDATIONS
+    function isValidStaffPayment(data) {
+      return data.keys().hasAll(['id', 'staff_id', 'staff_name', 'payment_date', 'amount', 'days_worked', 'month_year'])
+        && data.keys().size() <= 8
+        && data.id is string && data.id.size() <= 128
+        && data.staff_id is string && data.staff_id.size() <= 128
+        && data.staff_name is string && data.staff_name.size() <= 100
+        && data.payment_date is string && data.payment_date.size() <= 64
+        && data.amount is number && data.amount >= 0
+        && data.days_worked is number && data.days_worked >= 0
+        && data.month_year is string && data.month_year.size() <= 20
+        && (!data.keys().contains('notes') || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    match /staff_payments/{paymentId} {
+      allow read: if true;
+      allow write: if isValidId(paymentId) && isValidStaffPayment(incoming());
+    }
+
+    // BUSINESS OPERATIONAL EXPENSES VALIDATIONS
+    function isValidExpense(data) {
+      return data.keys().hasAll(['id', 'date', 'expense_type', 'amount', 'description', 'created_at'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 20
+        && data.expense_type is string && data.expense_type.size() <= 64
+        && data.amount is number && data.amount >= 0
+        && data.description is string && data.description.size() <= 1000
+        && data.created_at is string && data.created_at.size() <= 64
+        && (!data.keys().contains('staff_id') || (data.staff_id is string && data.staff_id.size() <= 128))
+        && (!data.keys().contains('staff_name') || (data.staff_name is string && data.staff_name.size() <= 100))
+        && (!data.keys().contains('added_by') || (data.added_by is string && data.added_by.size() <= 100));
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if true;
+      allow write: if isValidId(expenseId) && isValidExpense(incoming());
+    }
+
+    // FARMER VALIDATIONS
+    function isValidFarmer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'village', 'gender', 'products_sold', 'commission_rate', 'total_sales', 'our_profit', 'total_paid', 'payment_count', 'created_at', 'updated_at'])
+        && data.keys().size() <= 14
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 20
+        && data.village is string && data.village.size() <= 100
+        && (data.gender == 'male' || data.gender == 'female')
+        && data.products_sold is string && data.products_sold.size() <= 500
+        && (data.commission_rate == 5 || data.commission_rate == 10)
+        && data.total_sales is number && data.total_sales >= 0
+        && data.our_profit is number && data.our_profit >= 0
+        && data.total_paid is number && data.total_paid >= 0
+        && data.payment_count is number && data.payment_count >= 0
+        && data.created_at is string && data.created_at.size() <= 64
+        && data.updated_at is string && data.updated_at.size() <= 64
+        && (!data.keys().contains('secondary_phone') || (data.secondary_phone is string && data.secondary_phone.size() <= 20));
+    }
+
+    match /farmers/{farmerId} {
+      allow read: if true;
+      allow write: if isValidId(farmerId) && isValidFarmer(incoming());
+    }
+
+    // FARMER PAYMENTS VALIDATIONS
+    function isValidFarmerPayment(data) {
+      return data.keys().hasAll(['id', 'farmer_id', 'farmer_name', 'farmer_phone', 'amount', 'payment_date', 'added_by'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 128
+        && data.farmer_id is string && data.farmer_id.size() <= 128
+        && data.farmer_name is string && data.farmer_name.size() <= 100
+        && data.farmer_phone is string && data.farmer_phone.size() <= 20
+        && data.amount is number && data.amount >= 0
+        && data.payment_date is string && data.payment_date.size() <= 64
+        && data.added_by is string && data.added_by.size() <= 100
+        && (!data.keys().contains('notes') || (data.notes is string && data.notes.size() <= 1000))
+        && (!data.keys().contains('reference') || (data.reference is string && data.reference.size() <= 100));
+    }
+
+    match /farmer_payments/{paymentId} {
+      allow read: if true;
+      allow write: if isValidId(paymentId) && isValidFarmerPayment(incoming());
+    }
+
+    // FARMER SALES VALIDATIONS
+    function isValidFarmerSale(data) {
+      return data.keys().hasAll(['id', 'farmer_id', 'farmer_name', 'farmer_phone', 'amount', 'products', 'commission_rate', 'our_profit', 'sale_date', 'added_by'])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 128
+        && data.farmer_id is string && data.farmer_id.size() <= 128
+        && data.farmer_name is string && data.farmer_name.size() <= 100
+        && data.farmer_phone is string && data.farmer_phone.size() <= 20
+        && data.amount is number && data.amount >= 0
+        && data.products is string && data.products.size() <= 500
+        && (data.commission_rate == 5 || data.commission_rate == 10)
+        && data.our_profit is number && data.our_profit >= 0
+        && data.sale_date is string && data.sale_date.size() <= 64
+        && data.added_by is string && data.added_by.size() <= 100;
+    }
+
+    // DAILY LOG VALIDATIONS
+    function isValidDailyLog(data) {
+      return data.keys().hasAll(['id', 'date', 'operator_id', 'operator_name', 'event_type', 'description', 'resolved', 'created_at'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 20
+        && data.operator_id is string && data.operator_id.size() <= 128
+        && data.operator_name is string && data.operator_name.size() <= 100
+        && (data.event_type == 'Equipment Maintenance' || data.event_type == 'Visitor Check-in' || data.event_type == 'Site Incident' || data.event_type == 'General Note' || data.event_type == 'Supply Delivery' || data.event_type == 'Other')
+        && data.description is string && data.description.size() <= 2000
+        && data.resolved is bool
+        && data.created_at is string && data.created_at.size() <= 64
+        && (!data.keys().contains('resolution_notes') || (data.resolution_notes is string && data.resolution_notes.size() <= 2000));
+    }
+
+    match /farmer_sales/{saleId} {
+      allow read: if true;
+      allow write: if isValidId(saleId) && isValidFarmerSale(incoming());
+    }
+
+    match /daily_logs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId) && isValidDailyLog(incoming()) && incoming().id == logId;
+      allow update: if isValidId(logId) && isValidDailyLog(incoming()) && incoming().id == logId;
+      allow delete: if true;
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdminUser();
+      allow create: if isAdminUser();
+      allow update, delete: if false;
+    }
+  }
+}

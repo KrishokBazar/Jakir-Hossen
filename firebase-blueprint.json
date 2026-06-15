@@ -1,0 +1,241 @@
+{
+  "entities": {
+    "profile": {
+      "title": "Profile",
+      "description": "User profile for administrators and operators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the user" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "phone": { "type": "string", "description": "Unique phone number" },
+        "address": { "type": "string", "description": "Physical address" },
+        "role": { "type": "string", "enum": ["admin", "operator"], "description": "System role" },
+        "approved": { "type": "boolean", "description": "Approval status of the operator" },
+        "password": { "type": "string", "description": "Operator password for login authentication" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Registration time" }
+      },
+      "required": ["id", "name", "phone", "role", "approved"]
+    },
+    "customer": {
+      "title": "Customer",
+      "description": "Customer client record details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "name": { "type": "string", "description": "Full name" },
+        "phone": { "type": "string", "description": "Primary phone" },
+        "address": { "type": "string", "description": "Delivery address" },
+        "total_orders": { "type": "number", "description": "Total order count" },
+        "total_spent": { "type": "number", "description": "Lifetime purchase amount spent minus deductions" },
+        "total_returns": { "type": "number", "description": "Total count of return orders" },
+        "last_order_date": { "type": "string", "format": "date-time", "description": "Date of latest cataloged order" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation time" }
+      },
+      "required": ["id", "name", "phone", "total_orders", "total_spent", "total_returns", "created_at"]
+    },
+    "order": {
+      "title": "Order",
+      "description": "Sales or return transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique order ID" },
+        "customer_id": { "type": "string", "description": "Customer reference" },
+        "operator_id": { "type": "string", "description": "Staff operator reference" },
+        "amount": { "type": "number", "description": "Gross financial amount" },
+        "status": { "type": "string", "enum": ["delivery", "return"], "description": "Delivery vs. return status" },
+        "product_cost": { "type": "number", "description": "Calculated wholesale cost of products" },
+        "delivery_cost": { "type": "number", "description": "Logistics cost" },
+        "other_costs": { "type": "number", "description": "Incremental overheads" },
+        "total_cost": { "type": "number", "description": "Product + Delivery + Other costs combined" },
+        "profit": { "type": "number", "description": "Net yield amount" },
+        "order_date": { "type": "string", "format": "date-time", "description": "Order creation date" },
+        "notes": { "type": "string", "description": "Operator remarks" }
+      },
+      "required": ["id", "customer_id", "operator_id", "amount", "status", "product_cost", "delivery_cost", "other_costs", "total_cost", "profit", "order_date"]
+    },
+    "cost_settings": {
+      "title": "CostSettings",
+      "description": "Default cost parameters maintained by administrators",
+      "type": "object",
+      "properties": {
+        "product_cost_percent": { "type": "number", "description": "Wholesale cost percent approximation" },
+        "default_delivery_cost": { "type": "number", "description": "Standard delivery fee in BDT" },
+        "other_fixed_cost": { "type": "number", "description": "Other common carriage fee in BDT" },
+        "updated_by": { "type": "string", "description": "Admin ID of editor" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Modification timestamp" }
+      },
+      "required": ["product_cost_percent", "default_delivery_cost", "other_fixed_cost", "updated_at"]
+    },
+    "staff": {
+      "title": "Staff",
+      "description": "Internal business employee and field worker profiles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique staff ID (mobile number)" },
+        "name": { "type": "string", "description": "Full legal name" },
+        "phone": { "type": "string", "description": "Primary mobile number" },
+        "address": { "type": "string", "description": "Home address" },
+        "salary": { "type": "number", "description": "Fixed monthly base salary" },
+        "duty_hours": { "type": "number", "description": "Standard daily work hours" },
+        "holidays_weekly": { "type": "number", "description": "Number of weekly holidays" },
+        "id_card": { "type": "string", "description": "ID card serial or text details" },
+        "document": { "type": "string", "description": "Associated document log text or files references" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "name", "phone", "salary"]
+    },
+    "staff_payment": {
+      "title": "StaffPayment",
+      "description": "Salary disbursement and wage transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Disbursement ID" },
+        "staff_id": { "type": "string", "description": "Reference to the staff member" },
+        "staff_name": { "type": "string", "description": "Copy of the staff name" },
+        "payment_date": { "type": "string", "format": "date-time", "description": "Payment date" },
+        "amount": { "type": "number", "description": "Salary amount paid" },
+        "days_worked": { "type": "number", "description": "Total active work days" },
+        "month_year": { "type": "string", "description": "Target salary period (YYYY-MM)" },
+        "notes": { "type": "string", "description": "Payout annotations" }
+      },
+      "required": ["id", "staff_id", "staff_name", "payment_date", "amount", "days_worked", "month_year"]
+    },
+    "expense": {
+      "title": "Expense",
+      "description": "General business costs, daily cash expenditures, or co-founder withdrawals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique record id" },
+        "date": { "type": "string", "description": "Date of transaction (YYYY-MM-DD)" },
+        "staff_id": { "type": "string", "description": "Optional staff or co-founder reference" },
+        "staff_name": { "type": "string", "description": "Name of spender or co-founder" },
+        "expense_type": { "type": "string", "enum": ["Daily Cost", "Co-founder Withdraw", "Staff Advance", "Other Spend", "Salary Payout"], "description": "Classification of cost" },
+        "amount": { "type": "number", "description": "Amount disbursed in BDT" },
+        "description": { "type": "string", "description": "Purpose details" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "added_by": { "type": "string", "description": "User identifier who logged the cost" }
+      },
+      "required": ["id", "date", "expense_type", "amount", "description", "created_at"]
+    },
+    "farmer": {
+      "title": "Farmer",
+      "description": "Bangladeshi Farmer provider profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique primary mobile number as farmer ID" },
+        "name": { "type": "string", "description": "Full formal name" },
+        "phone": { "type": "string", "description": "Primary mobile phone" },
+        "secondary_phone": { "type": "string", "description": "Backup mobile phone" },
+        "village": { "type": "string", "description": "Home village" },
+        "gender": { "type": "string", "enum": ["male", "female"], "description": "Gender classification" },
+        "products_sold": { "type": "string", "description": "Names of products cultivated/sold" },
+        "commission_rate": { "type": "number", "enum": [5, 10], "description": "Krishok Bazar rate percent" },
+        "total_sales": { "type": "number", "description": "Cumulative gross sales volume" },
+        "our_profit": { "type": "number", "description": "Platform yield" },
+        "total_paid": { "type": "number", "description": "Aggregate receipts paid out" },
+        "payment_count": { "type": "number", "description": "Number of transaction statements processed" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Platform registration date" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Latest ledger update date" }
+      },
+      "required": ["id", "name", "phone", "village", "gender", "products_sold", "commission_rate", "total_sales", "our_profit", "total_paid", "payment_count", "created_at", "updated_at"]
+    },
+    "farmer_payment": {
+      "title": "FarmerPayment",
+      "description": "Settlements paid to farmers for their items sold",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Payout voucher transaction ID" },
+        "farmer_id": { "type": "string", "description": "Reference ID matching farmer" },
+        "farmer_name": { "type": "string", "description": "Farmer name copy" },
+        "farmer_phone": { "type": "string", "description": "Farmer primary mobile copy" },
+        "amount": { "type": "number", "description": "Amount disbursed in BDT" },
+        "payment_date": { "type": "string", "format": "date-time", "description": "Date of disbursement" },
+        "notes": { "type": "string", "description": "Payout logs annotations" },
+        "reference": { "type": "string", "description": "External bank/slip transaction reference" },
+        "added_by": { "type": "string", "description": "Authorized staff ID of logger" }
+      },
+      "required": ["id", "farmer_id", "farmer_name", "farmer_phone", "amount", "payment_date", "added_by"]
+    },
+    "farmer_sale": {
+      "title": "FarmerSale",
+      "description": "Sales volumes supplied and logged to individual farmer ledgers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Sale transaction logging ID" },
+        "farmer_id": { "type": "string", "description": "Reference ID matching farmer" },
+        "farmer_name": { "type": "string", "description": "Farmer name copy" },
+        "farmer_phone": { "type": "string", "description": "Farmer primary mobile" },
+        "amount": { "type": "number", "description": "Total sales in BDT" },
+        "products": { "type": "string", "description": "Items description text" },
+        "commission_rate": { "type": "number", "enum": [5, 10], "description": "Rate percent applied" },
+        "our_profit": { "type": "number", "description": "Calculated platform yield share log" },
+        "sale_date": { "type": "string", "format": "date-time", "description": "Log reporting timestamp" },
+        "added_by": { "type": "string", "description": "Authorized staff ID of logger" }
+      },
+      "required": ["id", "farmer_id", "farmer_name", "farmer_phone", "amount", "products", "commission_rate", "our_profit", "sale_date", "added_by"]
+    },
+    "daily_log": {
+      "title": "DailyLog",
+      "description": "Daily operations logs recorded by staff on site",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique log ID" },
+        "date": { "type": "string", "description": "Date of event (YYYY-MM-DD)" },
+        "operator_id": { "type": "string", "description": "Operator key reference" },
+        "operator_name": { "type": "string", "description": "Name of authorized operator who logged it" },
+        "event_type": { "type": "string", "enum": ["Equipment Maintenance", "Visitor Check-in", "Site Incident", "General Note", "Supply Delivery", "Other"], "description": "Classification of event" },
+        "description": { "type": "string", "description": "Core description of the operation or incident" },
+        "resolved": { "type": "boolean", "description": "Whether log/issue is resolved" },
+        "resolution_notes": { "type": "string", "description": "Notes concerning resolution of the incident" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "date", "operator_id", "operator_name", "event_type", "description", "resolved", "created_at"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileId}": {
+      "schema": "profile",
+      "description": "User login credentials and approval records"
+    },
+    "/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Customer directory profiles"
+    },
+    "/orders/{orderId}": {
+      "schema": "order",
+      "description": "Order sales and returns transactions"
+    },
+    "/cost_settings/default": {
+      "schema": "cost_settings",
+      "description": "Settings for automatic cost approximation"
+    },
+    "/staff/{staffId}": {
+      "schema": "staff",
+      "description": "Staff employee files"
+    },
+    "/staff_payments/{paymentId}": {
+      "schema": "staff_payment",
+      "description": "Staff salary payout logs"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "expense",
+      "description": "Operational business expenses and co-founder ledger"
+    },
+    "/farmers/{farmerId}": {
+      "schema": "farmer",
+      "description": "Registered farmer ledgers"
+    },
+    "/farmer_payments/{paymentId}": {
+      "schema": "farmer_payment",
+      "description": "Vouchers disbursed to farmers"
+    },
+    "/farmer_sales/{saleId}": {
+      "schema": "farmer_sale",
+      "description": "Lead and wholesale sales credited to farmer accounts"
+    },
+    "/daily_logs/{logId}": {
+      "schema": "daily_log",
+      "description": "Daily operations logs recorded by staff on site"
+    }
+  }
+}

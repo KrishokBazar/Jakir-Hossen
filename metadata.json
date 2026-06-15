@@ -1,0 +1,6 @@
+{
+  "name": "Krishok Bazar Admin Panel",
+  "description": "Internal operations portal for operators and admins at Krishok Bazar Bangladeshi Farmer Marketplace. Supports order registration, customer profiles, cost calculations, operator approvals, and real-time reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
