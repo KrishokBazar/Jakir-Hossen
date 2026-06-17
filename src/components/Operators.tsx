@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { dbService } from '../db';
 import { Profile } from '../types';
 import { useNotification } from './NotificationContext';
-import { Users, CheckCircle, ShieldAlert, Trash2, Smartphone, Calendar, UserCheck, MessageSquare, RefreshCw } from 'lucide-react';
+import { Users, CheckCircle, ShieldAlert, Trash2, Smartphone, Calendar, UserCheck, MessageSquare, RefreshCw, Edit3, Key, Lock, X, Save } from 'lucide-react';
 
 interface OperatorsProps {
   onApprovalChange: (count: number) => void;
@@ -15,6 +15,67 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Operator Editing States
+  const [editingOperator, setEditingOperator] = useState<Profile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'operator' | 'cofounder'>('operator');
+  const [editPassword, setEditPassword] = useState('');
+  const [editApproved, setEditApproved] = useState(true);
+  const [editPhotoUrl, setEditPhotoUrl] = useState('');
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("ছবিটির সাইজ খুব বড় (অনুগ্রহ করে ২ মেগাবাইটের কম সাইজের ছবি দিন)");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditPhotoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const startEditOperator = (op: Profile) => {
+    setEditingOperator(op);
+    setEditName(op.name || '');
+    setEditPhone(op.phone || op.id || '');
+    setEditRole(op.role || 'operator');
+    setEditPassword((op as any).password || '');
+    setEditApproved(op.approved);
+    setEditPhotoUrl(op.photo_url || '');
+  };
+
+  const handleSaveOperator = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingOperator) return;
+    if (!editName.trim()) {
+      showNotification("সতর্কতা", "নাম খালি রাখা যাবে না।", "warning");
+      return;
+    }
+    setProcessingId(editingOperator.id);
+    try {
+      await dbService.updateOperatorProfile(editingOperator.id, {
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        role: editRole,
+        password: editPassword,
+        approved: editApproved,
+        photo_url: editPhotoUrl || undefined
+      });
+      showNotification("সফল", "অপারেটর প্রোফাইল সফলভাবে আপডেট করা হয়েছে।", "success");
+      setEditingOperator(null);
+      await fetchOperators();
+    } catch (err: any) {
+      showError("প্রোফাইল আপডেট ব্যর্থ হয়েছে", err);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const fetchOperators = async () => {
     setLoading(true);
@@ -183,9 +244,22 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
             {pendingOps.map((op) => (
               <div key={op.id} className="bg-amber-50/40 p-4.5 rounded-xl border border-amber-200 shadow-xs flex flex-col justify-between">
                 <div>
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-slate-900">{op.name}</h4>
-                    <span className="bg-amber-100 text-amber-800 text-[9px] uppercase font-bold px-2 py-0.5 rounded-sm">
+                  <div className="flex justify-between items-start mb-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      {op.photo_url ? (
+                        <img 
+                          src={op.photo_url} 
+                          alt={op.name}
+                          className="w-10 h-10 rounded-full object-cover border border-amber-200 shadow-xs shrink-0" 
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs shrink-0">
+                          {op.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <h4 className="font-bold text-slate-900">{op.name}</h4>
+                    </div>
+                    <span className="bg-amber-100 text-amber-800 text-[9px] uppercase font-bold px-2 py-0.5 rounded-sm shrink-0">
                       PENDING ROLE
                     </span>
                   </div>
@@ -234,7 +308,7 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
           <CheckCircle className="w-4 h-4 text-emerald-600" />
-          Approved Operators & Admins
+          Approved Operators, Co-Founders & Admins
         </h3>
 
         {approvedOps.length === 0 ? (
@@ -249,6 +323,7 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                   <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Staff Name</th>
                   <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Phone / Identifier</th>
                   <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Secured Role</th>
+                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Password (পাসওয়ার্ড)</th>
                   <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Join Date</th>
                   <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -259,14 +334,32 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                     <td className="px-5 py-3.5 font-bold text-slate-900">{op.name}</td>
                     <td className="px-5 py-3.5 font-mono text-slate-650">{op.phone || op.email || 'Root Account'}</td>
                     <td className="px-5 py-3.5">
-                      <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase ${op.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase ${
+                        op.role === 'admin' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : op.role === 'cofounder' 
+                            ? 'bg-indigo-100 text-indigo-800' 
+                            : 'bg-emerald-100 text-emerald-800'
+                      }`}>
                         {op.role}
                       </span>
+                    </td>
+                    <td className="px-5 py-3.5 font-mono font-semibold text-rose-600 bg-rose-50/20 px-2 py-0.5 rounded border border-rose-100/30 max-w-[120px] truncate">
+                      {(op as any).password || <span className="text-slate-400 font-sans">Not set / admin override</span>}
                     </td>
                     <td className="px-5 py-3.5 text-slate-450 font-mono">{new Date(op.created_at).toLocaleDateString()}</td>
                     <td className="px-5 py-3.5 text-right">
                       {op.email !== 'ajzakir004@gmail.com' ? (
                         <div className="flex justify-end gap-2">
+                          {/* Edit operator button */}
+                          <button
+                            onClick={() => startEditOperator(op)}
+                            className="p-1 px-2 border border-slate-250 rounded-md hover:bg-slate-100 text-slate-600 flex items-center gap-1 cursor-pointer font-bold"
+                            title="Edit Operator details"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-blue-500" /> সম্পাদনা (Edit)
+                          </button>
+
                           {/* Force Notify Button via WhatsApp */}
                           {op.phone && (
                             <button
@@ -280,6 +373,7 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                               <MessageSquare className="w-3.5 h-3.5 text-slate-500" /> Notify
                             </button>
                           )}
+
                           <button
                             onClick={() => handleReject(op.id, op.name)}
                             className="p-1 text-rose-600 border border-thin border-rose-200 hover:bg-rose-50 rounded-md cursor-pointer"
@@ -299,6 +393,109 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
           </div>
         )}
       </div>
+
+      {/* Inline Operator Edit Modal Component */}
+      {editingOperator && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-bento border border-slate-200 shadow-xl overflow-hidden w-full max-w-md">
+            <div className="bg-slate-950 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-bento-accent" />
+                <span className="font-bold text-sm">অপারেটর প্রোফাইল সম্পাদনা (Edit Operator)</span>
+              </div>
+              <button 
+                onClick={() => setEditingOperator(null)} 
+                className="text-slate-405 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOperator} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5 label text-left">নাম (Staff Name)</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-205 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5 label text-left">ফোন নম্বর / আইডি (Identifier/Phone)</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-100 border border-slate-205 rounded-lg text-slate-500 cursor-not-allowed"
+                  disabled
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5 label text-left">পাসওয়ার্ড (Secured Password)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Key className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-205 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono font-bold text-rose-650"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5 label text-left">সিস্টেম রোল (System Role)</label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as any)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-205 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+                >
+                  <option value="operator">Operator (অপারেটর)</option>
+                  <option value="cofounder">Co-Founder (কো-ফাউন্ডার)</option>
+                  <option value="admin">Admin (অ্যাডমিন)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5 label text-left">অনুমোদন স্ট্যাটাস (Approval Status)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="checkbox-approved"
+                    checked={editApproved}
+                    onChange={(e) => setEditApproved(e.target.checked)}
+                    className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-slate-300 rounded"
+                  />
+                  <label htmlFor="checkbox-approved" className="font-semibold text-slate-700">অনুমোদিত সেশন এক্সেস (Approved Access)</label>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingOperator(null)}
+                  className="w-1/2 py-2.5 border border-slate-250 hover:bg-slate-50 rounded-lg font-bold text-slate-600 transition-colors cursor-pointer"
+                >
+                  Cancel (বাতিল)
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingId !== null}
+                  className="w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Save className="w-4 h-4" /> Save (সংরক্ষণ করুন)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

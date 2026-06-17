@@ -12,6 +12,9 @@ import Reminders from './components/Reminders';
 import StaffCosts from './components/StaffCosts';
 import Farmers from './components/Farmers';
 import DailyOperationsLog from './components/DailyOperationsLog';
+import LiveChat from './components/LiveChat';
+import CofounderWorkspace from './components/CofounderWorkspace';
+import FloatingChat from './components/FloatingChat';
 
 import { 
   Leaf, 
@@ -29,7 +32,9 @@ import {
   User,
   Info,
   Coins,
-  ClipboardList
+  ClipboardList,
+  MessageSquare,
+  Briefcase
 } from 'lucide-react';
 
 export default function App() {
@@ -43,6 +48,9 @@ export default function App() {
     const user = dbService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
+      if (user.role === 'cofounder') {
+        setCurrentTab('cofounder');
+      }
     }
     
     // Check pending operators if admin in the background
@@ -63,7 +71,11 @@ export default function App() {
   const handleLoginSuccess = () => {
     const user = dbService.getCurrentUser();
     setCurrentUser(user);
-    setCurrentTab('dashboard');
+    if (user && user.role === 'cofounder') {
+      setCurrentTab('cofounder');
+    } else {
+      setCurrentTab('dashboard');
+    }
     if (user && user.role === 'admin') {
       // Fetch operators list to evaluate counts
       dbService.getOperators().then((ops) => {
@@ -87,10 +99,12 @@ export default function App() {
   }
 
   const isAdmin = currentUser.role === 'admin';
+  const isCofounder = currentUser.role === 'cofounder';
 
   // Navigation Links Definition
   const navigationItems = [
     { id: 'dashboard', name: 'ড্যাশবোর্ড (Dashboard)', icon: Grid, roleRequired: 'all' },
+    { id: 'cofounder', name: 'কো-ফাউন্ডার ড্যাশবোর্ড (Cofounder)', icon: Briefcase, roleRequired: 'cofounder_or_admin' },
     { id: 'order_entry', name: 'অর্ডার এন্ট্রি (Add Order)', icon: PlusCircle, roleRequired: 'all' },
     { id: 'customers', name: 'গ্রাহক তালিকা (Customers)', icon: Users, roleRequired: 'all' },
     { id: 'farmers', name: 'কৃষক তালিকা (Farmers)', icon: Leaf, roleRequired: 'all' },
@@ -100,11 +114,15 @@ export default function App() {
     { id: 'operations_log', name: 'দৈনিক অপারেশন লগ (Daily Log)', icon: ClipboardList, roleRequired: 'all' },
     { id: 'reports', name: 'রিপোর্ট সমূহ (Reports)', icon: FileText, roleRequired: 'all' },
     { id: 'reminders', name: 'অলস গ্রাহক রিমাইন্ডার (Reminders)', icon: Clock, roleRequired: 'all' },
+    { id: 'live_chat', name: 'লাইভ চ্যাটরুম (Live Chat)', icon: MessageSquare, roleRequired: 'all' },
   ];
 
   // Helper to filter nav items based on user role authorization
   const visibleNavs = navigationItems.filter(
-    (item) => item.roleRequired === 'all' || (item.roleRequired === 'admin' && isAdmin)
+    (item) => 
+      item.roleRequired === 'all' || 
+      (item.roleRequired === 'admin' && isAdmin) ||
+      (item.roleRequired === 'cofounder_or_admin' && (isAdmin || isCofounder))
   );
 
   return (
@@ -305,6 +323,9 @@ export default function App() {
           {currentTab === 'cost_settings' && isAdmin && (
             <CostSettingsView user={currentUser} />
           )}
+          {currentTab === 'cofounder' && (isAdmin || isCofounder) && (
+            <CofounderWorkspace user={currentUser} />
+          )}
           {currentTab === 'reports' && (
             <Reports />
           )}
@@ -317,7 +338,13 @@ export default function App() {
           {currentTab === 'operations_log' && (
             <DailyOperationsLog user={currentUser} />
           )}
+          {currentTab === 'live_chat' && (
+            <LiveChat />
+          )}
         </main>
+
+        {/* WhatsApp-like floating popup chat widget */}
+        <FloatingChat />
       </div>
     </div>
   );

@@ -190,6 +190,23 @@
         "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
       "required": ["id", "date", "operator_id", "operator_name", "event_type", "description", "resolved", "created_at"]
+    },
+    "chat_message": {
+      "title": "ChatMessage",
+      "description": "Real-time communication message between operators and admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "sender_id": { "type": "string", "description": "Sender user ID" },
+        "sender_name": { "type": "string", "description": "Sender display name" },
+        "sender_role": { "type": "string", "enum": ["admin", "operator"], "description": "Sender role tier" },
+        "receiver_id": { "type": "string", "description": "Receiver identifier or 'all' for public room" },
+        "receiver_name": { "type": "string", "description": "Receiver display name" },
+        "message": { "type": "string", "description": "Text message content" },
+        "image_url": { "type": "string", "description": "Optional attached image base64 or URL" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "sender_id", "sender_name", "sender_role", "receiver_id", "receiver_name", "message", "timestamp"]
     }
   },
   "firestore": {
@@ -236,6 +253,10 @@
     "/daily_logs/{logId}": {
       "schema": "daily_log",
       "description": "Daily operations logs recorded by staff on site"
+    },
+    "/chats/{chatId}": {
+      "schema": "chat_message",
+      "description": "Real-time communication chattering log documents"
     }
   }
 }

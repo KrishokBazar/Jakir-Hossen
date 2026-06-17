@@ -52,7 +52,23 @@ export default function Farmers({ user }: FarmersProps) {
   const [farmerCommission, setFarmerCommission] = useState<5 | 10>(10);
   const [initialSales, setInitialSales] = useState<number>(0);
   const [initialPaid, setInitialPaid] = useState<number>(0);
+  const [farmerPhotoUrl, setFarmerPhotoUrl] = useState('');
   const [farmerError, setFarmerError] = useState<string | null>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("ছবিটির সাইজ খুব বড় (অনুগ্রহ করে ২ মেগাবাইটের কম সাইজের ছবি দিন)");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFarmerPhotoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Payment form states
   const [paymentFarmerId, setPaymentFarmerId] = useState('');
@@ -115,6 +131,7 @@ export default function Farmers({ user }: FarmersProps) {
     setFarmerCommission(10);
     setInitialSales(0);
     setInitialPaid(0);
+    setFarmerPhotoUrl('');
     setFarmerError(null);
     setShowAddFarmerModal(true);
   };
@@ -148,6 +165,7 @@ export default function Farmers({ user }: FarmersProps) {
     setFarmerGender(farmer.gender);
     setFarmerProducts(farmer.products_sold);
     setFarmerCommission(farmer.commission_rate);
+    setFarmerPhotoUrl(farmer.photo_url || '');
     setFarmerError(null);
   };
 
@@ -178,7 +196,8 @@ export default function Farmers({ user }: FarmersProps) {
         total_sales: initialSales,
         our_profit: profitVal,
         total_paid: initialPaid,
-        payment_count: initialPaid > 0 ? 1 : 0
+        payment_count: initialPaid > 0 ? 1 : 0,
+        photo_url: farmerPhotoUrl || undefined
       };
 
       // Check duplicate/merge rule!
@@ -242,7 +261,8 @@ export default function Farmers({ user }: FarmersProps) {
         gender: farmerGender,
         products_sold: farmerProducts.trim(),
         commission_rate: farmerCommission,
-        our_profit: profitVal
+        our_profit: profitVal,
+        photo_url: farmerPhotoUrl || undefined
       });
 
       // Update selected modal details if open
@@ -256,7 +276,8 @@ export default function Farmers({ user }: FarmersProps) {
           gender: farmerGender,
           products_sold: farmerProducts.trim(),
           commission_rate: farmerCommission,
-          our_profit: profitVal
+          our_profit: profitVal,
+          photo_url: farmerPhotoUrl || undefined
         });
       }
 
@@ -629,6 +650,19 @@ export default function Farmers({ user }: FarmersProps) {
                                 <ChevronRight className="w-4 h-4" />
                               )}
                             </button>
+
+                            {f.photo_url ? (
+                              <img 
+                                src={f.photo_url} 
+                                alt={f.name} 
+                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm shrink-0"
+                              />
+                            ) : (
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${f.gender === 'female' ? 'bg-pink-400' : 'bg-blue-400'}`}>
+                                {f.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+
                             <div>
                               <div className="font-bold text-slate-950 flex items-center gap-1.5">
                                 <span>{f.name}</span>
@@ -855,13 +889,26 @@ export default function Farmers({ user }: FarmersProps) {
           {selectedFarmer ? (
             <div className="space-y-5">
               <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-base font-bold text-slate-950">{selectedFarmer.name} (কৃষকের কার্ড)</h3>
-                  <p className="text-[10px] text-slate-400 font-sans">নিবন্ধন তারিখ: {selectedFarmer.created_at ? new Date(selectedFarmer.created_at).toLocaleDateString() : 'N/A'}</p>
+                <div className="flex items-center gap-3">
+                  {selectedFarmer.photo_url ? (
+                    <img 
+                      src={selectedFarmer.photo_url} 
+                      alt={selectedFarmer.name}
+                      className="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm shrink-0" 
+                    />
+                  ) : (
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${selectedFarmer.gender === 'female' ? 'bg-pink-400' : 'bg-blue-400'}`}>
+                      {selectedFarmer.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-base font-bold text-slate-950">{selectedFarmer.name} (কৃষকের কার্ড)</h3>
+                    <p className="text-[10px] text-slate-400 font-sans">নিবন্ধন তারিখ: {selectedFarmer.created_at ? new Date(selectedFarmer.created_at).toLocaleDateString() : 'N/A'}</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedFarmer(null)}
-                  className="p-1 rounded-md text-slate-400 hover:bg-slate-100"
+                  className="p-1 rounded-md text-slate-400 hover:bg-slate-100 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -940,7 +987,12 @@ export default function Farmers({ user }: FarmersProps) {
               <div className="grid grid-cols-2 gap-2.5 pt-2 border-t">
                 <button
                   onClick={() => openEditFarmer(selectedFarmer)}
-                  className="py-2 text-xs font-bold border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 cursor-pointer"
+                  className={`py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 cursor-pointer ${
+                    isAdmin 
+                    ? 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    : 'border-slate-100 text-slate-300 bg-slate-50/50 cursor-not-allowed'
+                  }`}
+                  disabled={!isAdmin}
                 >
                   <Edit3 className="w-3.5 h-3.5 text-slate-500" /> এডিট (Edit)
                 </button>
@@ -1030,6 +1082,40 @@ export default function Farmers({ user }: FarmersProps) {
               {farmerError && (
                 <div className="p-2.5 bg-rose-50 text-rose-700 font-bold rounded-lg leading-tight border border-rose-100">{farmerError}</div>
               )}
+
+              {/* Photo Upload Area */}
+              <div className="flex flex-col items-center justify-center p-3 text-slate-700 bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-2">
+                <label className="text-slate-700 font-bold text-center block mb-0.5">কৃষকের ছবি (Farmer Photo)</label>
+                <div className="relative w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden border border-slate-300 group shadow-inner">
+                  {farmerPhotoUrl ? (
+                    <>
+                      <img src={farmerPhotoUrl} alt="Farmer" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFarmerPhotoUrl('')}
+                        className="absolute inset-0 bg-black/60 text-white text-[9px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      >
+                        মুছে ফেলুন
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xl text-slate-400">👤</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  id="farmer-photo-file-upload-add"
+                />
+                <label
+                  htmlFor="farmer-photo-file-upload-add"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-[10px] text-slate-705 border border-slate-200 rounded-md shadow-xs cursor-pointer select-none font-bold transition-all"
+                >
+                  ছবি আপলোড করুন (Upload Image)
+                </label>
+              </div>
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">কৃষকের নাম (Farmer Name) *</label>
@@ -1189,6 +1275,40 @@ export default function Farmers({ user }: FarmersProps) {
             </div>
 
             <form onSubmit={handleFarmerEditSubmit} className="p-5 space-y-4 text-xs font-semibold text-slate-700">
+              {/* Photo Upload Area */}
+              <div className="flex flex-col items-center justify-center p-3 text-slate-700 bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-2">
+                <label className="text-slate-700 font-bold text-center block mb-0.5">কৃষকের ছবি (Farmer Photo)</label>
+                <div className="relative w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden border border-slate-300 group shadow-inner">
+                  {farmerPhotoUrl ? (
+                    <>
+                      <img src={farmerPhotoUrl} alt="Farmer" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFarmerPhotoUrl('')}
+                        className="absolute inset-0 bg-black/60 text-white text-[9px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      >
+                        মুছে ফেলুন
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xl text-slate-400">👤</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  id="farmer-photo-file-upload-edit"
+                />
+                <label
+                  htmlFor="farmer-photo-file-upload-edit"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-[10px] text-slate-705 border border-slate-200 rounded-md shadow-xs cursor-pointer select-none font-bold transition-all"
+                >
+                  ছবি আপলোড করুন (Upload Image)
+                </label>
+              </div>
+
               <div>
                 <label className="block text-slate-700 font-bold mb-1">কৃষকের নাম (Name)</label>
                 <input

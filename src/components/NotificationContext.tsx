@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -47,7 +47,12 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
 
-  const showNotification = (title: string, message: string, type: NotificationType, duration = 6000) => {
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setExpandedDetailsId((prev) => (prev === id ? null : prev));
+  }, []);
+
+  const showNotification = useCallback((title: string, message: string, type: NotificationType, duration = 6000) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newNotification: Notification = { id, title, message, type, duration };
     
@@ -58,9 +63,9 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         dismissNotification(id);
       }, duration);
     }
-  };
+  }, [dismissNotification]);
 
-  const showError = (title: string, error: any, customMessage?: string) => {
+  const showError = useCallback((title: string, error: any, customMessage?: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     let message = customMessage || error?.message || String(error);
     let parsedDetails: any = null;
@@ -107,12 +112,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     };
 
     setNotifications((prev) => [...prev, newNotification]);
-  };
-
-  const dismissNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    setExpandedDetailsId((prev) => (prev === id ? null : prev));
-  };
+  }, []);
 
   const toggleDetails = (id: string) => {
     setExpandedDetailsId((prev) => (prev === id ? null : id));

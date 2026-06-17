@@ -18,7 +18,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog } from './types';
+import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup } from './types';
 
 // Supabase fallback modes (disabled to prefer Firebase)
 export const isSupabaseConfigured = (): boolean => {
@@ -77,6 +77,19 @@ export async function seedDatabaseIfNeeded() {
       role: 'admin',
       approved: true,
       password: 'Ajzakir@2020',
+      created_at: new Date().toISOString()
+    }, { merge: true });
+
+    // Seed Co-founder partner Ratan bhi
+    const cofounderDocRef = doc(db, 'profiles', '01679585601');
+    await setDoc(cofounderDocRef, {
+      id: '01679585601',
+      name: 'Ratan bhi',
+      phone: '01679585601',
+      email: 'ratanbhi@gmail.com',
+      role: 'cofounder',
+      approved: true,
+      password: '96323377',
       created_at: new Date().toISOString()
     }, { merge: true });
 
@@ -713,12 +726,12 @@ export const dbService = {
 
     const todayProfit = todayOrderProfit - todayExpensesAmount;
 
-    const chartMap = new Map<string, { sales: number; profit: number; orders: number; returns: number }>();
+    const chartMap = new Map<string, { sales: number; profit: number; expenses: number; orders: number; returns: number }>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(now.getDate() - i);
       const k = d.toISOString().split('T')[0];
-      chartMap.set(k, { sales: 0, profit: 0, orders: 0, returns: 0 });
+      chartMap.set(k, { sales: 0, profit: 0, expenses: 0, orders: 0, returns: 0 });
     }
 
     orders.forEach((o) => {
@@ -728,10 +741,13 @@ export const dbService = {
         const orderAmt = Math.abs(Number(o.amount) || 0);
         const signedAmt = isReturn ? -orderAmt : orderAmt;
         const profit = Number(o.profit) || 0;
+        const orderCost = Number(o.total_cost) || 0;
+        const signedCost = isReturn ? -orderCost : orderCost;
         const current = chartMap.get(k)!;
 
         current.sales += signedAmt;
         current.profit += profit;
+        current.expenses += signedCost;
         if (isReturn) {
           current.returns++;
         } else {
@@ -744,7 +760,9 @@ export const dbService = {
       const k = e.date;
       if (chartMap.has(k)) {
         const current = chartMap.get(k)!;
-        current.profit -= (Number(e.amount) || 0);
+        const amt = Number(e.amount) || 0;
+        current.profit -= amt;
+        current.expenses += amt;
       }
     });
 
@@ -752,6 +770,7 @@ export const dbService = {
       date,
       sales: Math.round(val.sales),
       profit: Math.round(val.profit),
+      expenses: Math.round(val.expenses),
       orders: val.orders,
       returns: val.returns,
     }));
@@ -1120,7 +1139,10 @@ export const dbService = {
   async deleteFarmer(id: string): Promise<void> {
     try {
       const docRef = doc(db, 'farmers', id);
+      const snap = await getDoc(docRef);
+      const farmerName = snap.exists() ? snap.data().name : id;
       await deleteDoc(docRef);
+      await dbService.addAuditLog('delete_farmer', id, farmerName, `Deleted farmer profile: ${farmerName} (${id})`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `farmers/${id}`);
       throw error;
@@ -1217,8 +1239,12 @@ export const dbService = {
     try {
       const docRef = doc(db, 'farmer_payments', id);
       const snap = await getDoc(docRef);
+      let fName = 'Unknown';
+      let amt = 0;
       if (snap.exists()) {
         const payment = snap.data() as FarmerPayment;
+        fName = payment.farmer_name;
+        amt = payment.amount;
         const farmerRef = doc(db, 'farmers', payment.farmer_id);
         const farmerSnap = await getDoc(farmerRef);
         if (farmerSnap.exists()) {
@@ -1239,6 +1265,8 @@ export const dbService = {
       } catch (e) {
         console.warn("Farmer secondary expense deletion skipped:", e);
       }
+
+      await dbService.addAuditLog('delete_farmer_payment', id, `Payment to ${fName}`, `Deleted farmer payment of ৳${amt} paid to ${fName}.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `farmer_payments/${id}`);
       throw error;
@@ -1323,8 +1351,12 @@ export const dbService = {
     try {
       const docRef = doc(db, 'farmer_sales', id);
       const snap = await getDoc(docRef);
+      let fName = 'Unknown';
+      let amt = 0;
       if (snap.exists()) {
         const sale = snap.data() as FarmerSale;
+        fName = sale.farmer_name;
+        amt = sale.amount;
         const farmerRef = doc(db, 'farmers', sale.farmer_id);
         const farmerSnap = await getDoc(farmerRef);
         if (farmerSnap.exists()) {
@@ -1339,6 +1371,7 @@ export const dbService = {
         }
       }
       await deleteDoc(docRef);
+      await dbService.addAuditLog('delete_farmer_sale', id, `Sale by ${fName}`, `Deleted farmer sale log of ৳${amt} for ${fName}.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `farmer_sales/${id}`);
       throw error;
@@ -1449,7 +1482,10 @@ export const dbService = {
   async deleteDailyLog(id: string): Promise<void> {
     try {
       const docRef = doc(db, 'daily_logs', id);
+      const snap = await getDoc(docRef);
+      const dateStr = snap.exists() ? snap.data().date : id;
       await deleteDoc(docRef);
+      await dbService.addAuditLog('delete_daily_log', id, `Log for ${dateStr}`, `Deleted daily operation log for date ${dateStr}.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `daily_logs/${id}`);
       throw error;
@@ -1508,6 +1544,156 @@ export const dbService = {
       handleFirestoreError(error, OperationType.LIST, 'audit_logs');
       if (onError) onError(error);
     });
+  },
+
+  async sendChatMessage(msg: Omit<ChatMessage, 'id' | 'timestamp'>): Promise<void> {
+    try {
+      const msgId = doc(collection(db, 'chats')).id;
+      const ref = doc(db, 'chats', msgId);
+      await setDoc(ref, {
+        ...msg,
+        id: msgId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Failed to send chat message:", e);
+      throw e;
+    }
+  },
+
+  subscribeChats(onUpdate: (msgs: ChatMessage[]) => void, onError?: (err: any) => void): () => void {
+    const q = collection(db, 'chats');
+    return onSnapshot(q, (snap) => {
+      const list: ChatMessage[] = [];
+      snap.forEach((docRef) => {
+        list.push(docRef.data() as ChatMessage);
+      });
+      const sorted = list.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      onUpdate(sorted);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'chats');
+      if (onError) onError(error);
+    });
+  },
+
+  async markChatMessageAsSeen(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'chats', id);
+      await updateDoc(ref, { seen: true });
+    } catch (e) {
+      console.error("Failed to mark chat message as seen:", e);
+    }
+  },
+
+  async updateOperatorProfile(id: string, data: Partial<Profile>): Promise<void> {
+    try {
+      const ref = doc(db, 'profiles', id);
+      await updateDoc(ref, data);
+    } catch (e) {
+      console.error("Failed to update operator profile:", e);
+      throw e;
+    }
+  },
+
+  async deleteOperatorProfile(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'profiles', id);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("Failed to delete operator profile:", e);
+      throw e;
+    }
+  },
+
+  async addCofounderNote(title: string, content: string): Promise<void> {
+    try {
+      const noteId = doc(collection(db, 'cofounder_notes')).id;
+      const ref = doc(db, 'cofounder_notes', noteId);
+      await setDoc(ref, {
+        id: noteId,
+        title,
+        content,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Failed to add cofounder note:", e);
+      throw e;
+    }
+  },
+
+  subscribeCofounderNotes(onUpdate: (notes: CofounderNote[]) => void, onError?: (err: any) => void): () => void {
+    const q = collection(db, 'cofounder_notes');
+    return onSnapshot(q, (snap) => {
+      const list: CofounderNote[] = [];
+      snap.forEach((docRef) => {
+        list.push(docRef.data() as CofounderNote);
+      });
+      const sorted = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      onUpdate(sorted);
+    }, (error) => {
+      console.error("Error subscribing to cofounder notes:", error);
+      if (onError) onError(error);
+    });
+  },
+
+  async deleteCofounderNote(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'cofounder_notes', id);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("Failed to delete cofounder note:", e);
+      throw e;
+    }
+  },
+
+  async createChatGroup(group: Omit<ChatGroup, 'id' | 'created_at'>): Promise<void> {
+    try {
+      const id = doc(collection(db, 'chat_groups')).id;
+      const ref = doc(db, 'chat_groups', id);
+      await setDoc(ref, {
+        ...group,
+        id,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Failed to create chat group:", e);
+      throw e;
+    }
+  },
+
+  subscribeChatGroups(onUpdate: (groups: ChatGroup[]) => void, onError?: (err: any) => void): () => void {
+    const q = collection(db, 'chat_groups');
+    return onSnapshot(q, (snap) => {
+      const list: ChatGroup[] = [];
+      snap.forEach((docRef) => {
+        list.push(docRef.data() as ChatGroup);
+      });
+      const sorted = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      onUpdate(sorted);
+    }, (error) => {
+      console.error("Error subscribing to chat groups:", error);
+      if (onError) onError(error);
+    });
+  },
+
+  async deleteChatGroup(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'chat_groups', id);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("Failed to delete chat group:", e);
+      throw e;
+    }
+  },
+
+  async deleteChatMessage(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'chats', id);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("Failed to delete chat message:", e);
+      throw e;
+    }
   }
 
 

@@ -17,7 +17,8 @@ import {
   Trash2, 
   Info, 
   User, 
-  RefreshCw 
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 
 interface CustomersProps {
@@ -204,6 +205,39 @@ export default function Customers({ user }: CustomersProps) {
   );
 
   const isAdmin = canDelete(user);
+  const isCofounder = user.role === 'cofounder';
+
+  const handleExportCSV = () => {
+    if (filteredCustomers.length === 0) {
+      showNotification("সতর্কতা", "রপ্তানি করার জন্য কোনো গ্রাহক ডেটা পাওয়া যায়নি।", "warning");
+      return;
+    }
+    const headers = ["ID", "Name", "Phone", "Address", "Total Orders", "Total Spent", "Total Returns", "Last Order Date", "Created At"];
+    const csvRows = [
+      headers.join(','),
+      ...filteredCustomers.map(cust => [
+        `"${cust.id}"`,
+        `"${cust.name.replace(/"/g, '""')}"`,
+        `"${cust.phone}"`,
+        `"${(cust.address || '').replace(/"/g, '""')}"`,
+        `"${cust.total_orders}"`,
+        `"${cust.total_spent}"`,
+        `"${cust.total_returns}"`,
+        `"${cust.last_order_date || ''}"`,
+        `"${cust.created_at}"`
+      ].join(','))
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `customer_list_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showNotification("সফল হয়েছে", "গ্রাহক তালিকা সিএসভি ফাইল হিসেবে ডাউনলোড করা হয়েছে।", "success");
+  };
 
   return (
     <div className="space-y-6">
@@ -217,7 +251,7 @@ export default function Customers({ user }: CustomersProps) {
           <p className="text-xs text-slate-500">View customer lifetime values, total spent, and match operators logs immediately.</p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           <button
             onClick={loadData}
             title="Refresh database"
@@ -225,6 +259,16 @@ export default function Customers({ user }: CustomersProps) {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
+
+          {/* Export customer list button for Admins and Co-founders */}
+          {(isAdmin || isCofounder) && (
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <FileText className="w-4 h-4 text-emerald-300" /> Export CSV (সিএসভি ডাউনলোড)
+            </button>
+          )}
           
           <button
             type="button"

@@ -245,6 +245,38 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
   });
 
   const isAdmin = canDelete(user);
+  const isCofounder = user.role === 'cofounder';
+
+  const handleExportCSV = () => {
+    if (filteredLogs.length === 0) {
+      showNotification("সতর্কতা", "রপ্তানি করার জন্য কোনো ডাটা পাওয়া যায়নি।", "warning");
+      return;
+    }
+    const headers = ["ID", "Date", "Operator", "Event Type", "Description", "Status", "Resolution Notes", "Created At"];
+    const csvRows = [
+      headers.join(','),
+      ...filteredLogs.map(log => [
+        `"${log.id}"`,
+        `"${log.date}"`,
+        `"${log.operator_name.replace(/"/g, '""')}"`,
+        `"${log.event_type}"`,
+        `"${log.description.replace(/"/g, '""')}"`,
+        `"${log.resolved ? 'Resolved' : 'Active'}"`,
+        `"${(log.resolution_notes || '').replace(/"/g, '""')}"`,
+        `"${log.created_at}"`
+      ].join(','))
+    ];
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `daily_operations_log_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showNotification("সফল হয়েছে", "অপারেশন লগ সিএসভি ফাইল হিসেবে ডাউনলোড করা হয়েছে।", "success");
+  };
 
   return (
     <div id="daily-operations-log-view" className="space-y-6">
@@ -265,17 +297,30 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
           </p>
         </div>
 
-        {/* Create Button */}
-        <button
-          onClick={() => {
-            setEventDate(new Date().toISOString().split('T')[0]);
-            setShowAddModal(true);
-          }}
-          className="flex items-center justify-center gap-2 px-5 py-3 bg-bento-primary hover:bg-bento-primary/95 text-white text-xs font-bold rounded-bento shadow-bento select-none cursor-pointer transition-all duration-200 border-b-2 border-b-bento-primary-dark/40"
-        >
-          <PlusCircle className="w-4.5 h-4.5 text-bento-accent" />
-          <span>নতুন লগ এন্ট্রি (Add Log)</span>
-        </button>
+        <div className="flex flex-wrap gap-2.5 items-center">
+          {/* CSV Export Button for Admins and Co-founders */}
+          {(isAdmin || isCofounder) && (
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center justify-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-bento shadow-bento select-none cursor-pointer transition-all duration-200 border-b-2 border-b-teal-800"
+            >
+              <FileText className="w-4.5 h-4.5 text-emerald-300" />
+              <span>CSV ডাউলোড (Export CSV)</span>
+            </button>
+          )}
+
+          {/* Create Button */}
+          <button
+            onClick={() => {
+              setEventDate(new Date().toISOString().split('T')[0]);
+              setShowAddModal(true);
+            }}
+            className="flex items-center justify-center gap-2 px-5 py-3 bg-bento-primary hover:bg-bento-primary/95 text-white text-xs font-bold rounded-bento shadow-bento select-none cursor-pointer transition-all duration-200 border-b-2 border-b-bento-primary-dark/40"
+          >
+            <PlusCircle className="w-4.5 h-4.5 text-bento-accent" />
+            <span>নতুন লগ এন্ট্রি (Add Log)</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Control Center */}

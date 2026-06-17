@@ -71,7 +71,7 @@ export default function StaffCosts({ user }: StaffCostsProps) {
   // Form states for Expense entry
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expSpenderName, setExpSpenderName] = useState('Co-founder');
-  const [expType, setExpType] = useState<'Daily Cost' | 'Co-founder Withdraw' | 'Staff Advance' | 'Other Spend'>('Daily Cost');
+  const [expType, setExpType] = useState<string>('Daily Cost');
   const [expAmount, setExpAmount] = useState('');
   const [expDesc, setExpDesc] = useState('');
   const [expDate, setExpDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -766,15 +766,24 @@ export default function StaffCosts({ user }: StaffCostsProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-bento-muted mb-1">ক্যাটাগরি / প্রকার (Expense Category) *</label>
+                <label className="block text-xs font-bold text-bento-muted mb-1">ক্যাটাগরি / प्रकार (Expense Category) *</label>
                 <select
                   value={expType}
-                  onChange={(e) => setExpType(e.target.value as any)}
+                  onChange={(e) => setExpType(e.target.value)}
                   className="w-full bg-bento-bg border border-bento-border p-2.5 rounded-xl text-xs font-bold focus:outline-emerald-600 outline-none"
                 >
                   <option value="Daily Cost">দৈনিক বাজার খরচ (Daily Cost)</option>
+                  <option value="Accommodation">আবাসন বা হোটেল বিল (Accommodation)</option>
+                  <option value="Vehicle Charges">যানবাহন ও ফুয়েল খরচ (Vehicle Charges)</option>
                   <option value="Co-founder Withdraw">ফাউন্ডার বা মালিক উইথড্র (Co-founder Withdraw)</option>
-                  <option value="Staff Advance">কর্মচারী বা ট্রাভেল অগ্রিম (Staff Advance)</option>
+                  <option value="Co-founder Spend">কো-ফাউন্ডার / এডমিন ব্যয় (Co-founder Spend)</option>
+                  <option value="Staff Advance">কর্মচারী অগ্রিম (Staff Advance)</option>
+                  <option value="Office Utility">অফিস বিদ্যুৎ ও ইউটিলিটি বিল (Office Utility)</option>
+                  <option value="Packaging Costs">প্যাকেজিং ও ব্যাগ সামগ্রী (Packaging Cost)</option>
+                  <option value="Discounts Given">ডিসকাউন্ট / অফার কাটতি (Discounts Given)</option>
+                  <option value="Food Allowances">খাবার ভাতা (Food Allowance)</option>
+                  <option value="Entertainment">আপ্যায়ন এবং চা-নাস্তা খরচ (Entertainment)</option>
+                  <option value="Equipment Purchase">যন্ত্রপাতি বা গ্যাজেট ক্রয় (Equipment Purchase)</option>
                   <option value="Other Spend">অন্যান্য ওভারহেড হিসাব (Other Spend)</option>
                 </select>
               </div>

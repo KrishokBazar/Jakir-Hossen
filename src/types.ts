@@ -3,9 +3,12 @@ export interface Profile {
   email?: string;
   phone?: string;
   name: string;
-  role: 'admin' | 'operator';
+  role: 'admin' | 'operator' | 'cofounder';
   approved: boolean;
+  address?: string;
+  password?: string;
   created_at: string;
+  photo_url?: string;
 }
 
 export interface Customer {
@@ -51,6 +54,7 @@ export interface DailyStat {
   date: string;
   sales: number;
   profit: number;
+  expenses: number;
   orders: number;
   returns: number;
 }
@@ -66,6 +70,7 @@ export interface Staff {
   id_card?: string;
   document?: string;
   created_at: string;
+  photo_url?: string;
 }
 
 export interface StaffPayment {
@@ -117,6 +122,7 @@ export interface Farmer {
   payment_count: number; // how many times paid
   created_at: string;
   updated_at: string;
+  photo_url?: string;
 }
 
 export interface FarmerPayment {
@@ -153,6 +159,35 @@ export interface DailyLog {
   description: string;
   resolved: boolean;
   resolution_notes?: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: 'admin' | 'operator' | 'cofounder';
+  receiver_id: string; // 'all' for group chat, or specific user's phone/id, or group_id
+  receiver_name: string;
+  message: string;
+  image_url?: string;
+  timestamp: string;
+  seen?: boolean;
+}
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  member_ids: string[]; // profiles IDs included in this room
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface CofounderNote {
+  id: string;
+  title: string;
+  content: string;
   created_at: string;
 }
 

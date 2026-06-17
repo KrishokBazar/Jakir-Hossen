@@ -1,6 +1,6 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { dbService } from '../db';
-import { Leaf, LogIn, UserPlus, Phone, Lock, User, MapPin, CheckCircle, Loader2, ShieldAlert, BadgeInfo } from 'lucide-react';
+import { Leaf, LogIn, UserPlus, Phone, Lock, User, MapPin, CheckCircle, Loader2, ShieldAlert, BadgeInfo, Eye, EyeOff } from 'lucide-react';
 import { constructWhatsAppAdminNotificationUrl } from '../utils/whatsapp';
 
 interface LoginProps {
@@ -12,10 +12,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Login State
-  const [loginId, setLoginId] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [loginId, setLoginId] = useState(() => {
+    return localStorage.getItem('savedOperatorPhone') || '';
+  });
+  const [loginPassword, setLoginPassword] = useState(() => {
+    return localStorage.getItem('savedOperatorPassword') || '';
+  });
 
   // Register State
   const [regName, setRegName] = useState('');
@@ -83,12 +88,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     if (authError) {
       if (authError.includes('Approval pending') || authError.includes('approve') || authError.includes('অনুমোদন')) {
-        setPendingApprovalPhone(loginId.trim());
+        const cleanPhone = loginId.trim();
+        setPendingApprovalPhone(cleanPhone);
         setPendingApprovalPassword(loginPassword);
+        localStorage.setItem('savedOperatorPhone', cleanPhone);
+        localStorage.setItem('savedOperatorPassword', loginPassword);
       }
       setError(authError);
       setLoading(false);
       return;
+    }
+
+    if (loginRole === 'operator') {
+      localStorage.setItem('savedOperatorPhone', loginId.trim());
+      localStorage.setItem('savedOperatorPassword', loginPassword);
     }
 
     setLoading(false);
@@ -123,6 +136,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setError(regError || "অপারেটর নিবন্ধন ব্যর্থ হয়েছে।");
       return;
     }
+
+    // Save registered credentials so they are preloaded and visible automatically
+    localStorage.setItem('savedOperatorPhone', regPhone.trim());
+    localStorage.setItem('savedOperatorPassword', regPassword);
+    setLoginId(regPhone.trim());
+    setLoginPassword(regPassword);
 
     setRegisteredSuccess(true);
     try {
@@ -308,13 +327,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                         <Lock className="h-5 w-5" />
                       </div>
                       <input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
+                        className="block w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
                         required
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
                     </div>
                   </div>
                 </>
@@ -393,13 +419,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                             <Lock className="h-5 w-5" />
                           </div>
                           <input
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             value={regPassword}
                             onChange={(e) => setRegPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
+                            className="block w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
                             required
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
                         </div>
                       </div>
                     </>
@@ -434,13 +467,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                             <Lock className="h-5 w-5" />
                           </div>
                           <input
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
+                            className="block w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm transition-all"
                             required
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
                         </div>
                       </div>
                     </>
