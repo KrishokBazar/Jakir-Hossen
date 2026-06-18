@@ -171,8 +171,20 @@ export interface ChatMessage {
   receiver_name: string;
   message: string;
   image_url?: string;
+  audio_url?: string;
   timestamp: string;
   seen?: boolean;
+  reply_to?: {
+    message_id: string;
+    sender_name: string;
+    message: string;
+    image_url?: string;
+  };
+  reactions?: {
+    emoji: string;
+    sender_id: string;
+    sender_name: string;
+  }[];
 }
 
 export interface ChatGroup {

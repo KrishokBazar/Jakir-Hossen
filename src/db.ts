@@ -1546,14 +1546,14 @@ export const dbService = {
     });
   },
 
-  async sendChatMessage(msg: Omit<ChatMessage, 'id' | 'timestamp'>): Promise<void> {
+  async sendChatMessage(msg: Omit<ChatMessage, 'id' | 'timestamp'> & { id?: string; timestamp?: string }): Promise<void> {
     try {
-      const msgId = doc(collection(db, 'chats')).id;
+      const msgId = msg.id || doc(collection(db, 'chats')).id;
       const ref = doc(db, 'chats', msgId);
       await setDoc(ref, {
         ...msg,
         id: msgId,
-        timestamp: new Date().toISOString()
+        timestamp: msg.timestamp || new Date().toISOString()
       });
     } catch (e) {
       console.error("Failed to send chat message:", e);
@@ -1582,6 +1582,29 @@ export const dbService = {
       await updateDoc(ref, { seen: true });
     } catch (e) {
       console.error("Failed to mark chat message as seen:", e);
+    }
+  },
+
+  async toggleChatMessageReaction(messageId: string, emoji: string, senderId: string, senderName: string): Promise<void> {
+    try {
+      const ref = doc(db, 'chats', messageId);
+      const docSnap = await getDoc(ref);
+      if (docSnap.exists()) {
+        const data = docSnap.data() as ChatMessage;
+        let reactions = data.reactions || [];
+        const existingIndex = reactions.findIndex(r => r.emoji === emoji && r.sender_id === senderId);
+        if (existingIndex > -1) {
+          // Remove the reaction if the same person clicked the same emoji
+          reactions = reactions.filter((_, idx) => idx !== existingIndex);
+        } else {
+          // Add the reaction
+          reactions.push({ emoji, sender_id: senderId, sender_name: senderName });
+        }
+        await updateDoc(ref, { reactions });
+      }
+    } catch (e) {
+      console.error("Failed to toggle chat message reaction:", e);
+      throw e;
     }
   },
 

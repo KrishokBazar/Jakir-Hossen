@@ -346,14 +346,14 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="bg-blue-50/55 p-3 rounded-xl border border-blue-100">
                   <h4 className="font-bold text-slate-800 text-[11px] mb-1">👨‍💼 জাকির হোসেন (Zakir)</h4>
-                  <p className="text-[10px] text-slate-500 font-semibold uppercase">সহ-প্রতিষ্ঠাতা (Co-founder / Partner)</p>
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase">প্রতিষ্ঠাতা (Founder / Finance Boss)</p>
                   <div className="mt-2 text-[10px] font-bold text-blue-700 font-mono">মোবাইল: 01931355398</div>
                 </div>
 
                 <div className="bg-rose-50/55 p-3 rounded-xl border border-rose-100">
-                  <h4 className="font-bold text-slate-800 text-[11px] mb-1">👩‍💼 রিক্তা হোসেন (Rikta)</h4>
-                  <p className="text-[10px] text-slate-500 font-semibold uppercase">সহ-প্রতিষ্ঠাতা (Co-founder / Finance Boss)</p>
-                  <div className="mt-2 text-[10px] font-bold text-rose-700 font-mono">riktazhossain@gmail.com</div>
+                  <h4 className="font-bold text-slate-800 text-[11px] mb-1">👨‍💼 রতন ভাই (Raton)</h4>
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase">সহ-প্রতিষ্ঠাতা (Co-founder / Partner)</p>
+                  <div className="mt-2 text-[10px] font-bold text-rose-700 font-mono">মোবাইল: 01679585601</div>
                 </div>
               </div>
 

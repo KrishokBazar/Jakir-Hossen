@@ -15,6 +15,7 @@ import DailyOperationsLog from './components/DailyOperationsLog';
 import LiveChat from './components/LiveChat';
 import CofounderWorkspace from './components/CofounderWorkspace';
 import FloatingChat from './components/FloatingChat';
+import AppVersionChecker from './components/AppVersionChecker';
 
 import { 
   Leaf, 
@@ -65,6 +66,21 @@ export default function App() {
         }
       };
       fetchCount();
+    }
+  }, []);
+
+  // Request browser Notification permission on load
+  useEffect(() => {
+    if ('Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission()
+          .then((permission) => {
+            console.log('Browser system notification permission on load setup status:', permission);
+          })
+          .catch((err) => {
+            console.warn('Permission query for system desktop notifications failed:', err);
+          });
+      }
     }
   }, []);
 
@@ -345,6 +361,9 @@ export default function App() {
 
         {/* WhatsApp-like floating popup chat widget */}
         <FloatingChat />
+        
+        {/* Automatic Hot-reloading & live update notifier for PWA/installed modes */}
+        <AppVersionChecker />
       </div>
     </div>
   );

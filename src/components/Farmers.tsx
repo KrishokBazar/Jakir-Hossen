@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent, SVGProps } from 'react';
+import { useEffect, useState, FormEvent, SVGProps, ChangeEvent } from 'react';
 import { dbService } from '../db';
 import { Farmer, FarmerPayment, FarmerSale, Profile } from '../types';
 import { useNotification } from './NotificationContext';
@@ -55,7 +55,7 @@ export default function Farmers({ user }: FarmersProps) {
   const [farmerPhotoUrl, setFarmerPhotoUrl] = useState('');
   const [farmerError, setFarmerError] = useState<string | null>(null);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {

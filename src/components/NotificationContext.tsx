@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -24,9 +24,10 @@ export interface Notification {
 }
 
 interface NotificationContextType {
-  showNotification: (title: string, message: string, type: NotificationType, duration?: number) => void;
+  showNotification: (title: string, message: string, type: NotificationType, duration?: number, playSound?: boolean) => void;
   showError: (title: string, error: any, customMessage?: string) => void;
   dismissNotification: (id: string) => void;
+  playPing: (title?: string, message?: string) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -46,24 +47,73 @@ interface NotificationProviderProps {
 export function NotificationProvider({ children }: NotificationProviderProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const playPing = useCallback((title?: string, message?: string) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.volume = 0.55;
+      audioRef.current.play().catch((err) => {
+        console.debug("HTML5 Audio play failed:", err);
+      });
+    }
+
+    // Trigger browser toast system notification alongside audio ping
+    if (title && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const notif = new Notification(title, {
+          body: message || "নতুন বার্তা এসেছে।",
+          icon: 'https://cdn-icons-png.flaticon.com/512/1041/1041916.png',
+        });
+        notif.onclick = () => {
+          window.focus();
+          notif.close();
+        };
+      } catch (err) {
+        console.warn("System Notification from playPing failed:", err);
+      }
+    }
+  }, []);
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     setExpandedDetailsId((prev) => (prev === id ? null : prev));
   }, []);
 
-  const showNotification = useCallback((title: string, message: string, type: NotificationType, duration = 6000) => {
+  const showNotification = useCallback((title: string, message: string, type: NotificationType, duration = 6000, playSound = false) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newNotification: Notification = { id, title, message, type, duration };
     
     setNotifications((prev) => [...prev, newNotification]);
+
+    // Native browser toast / system notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const notif = new Notification(title, {
+          body: message,
+          icon: 'https://cdn-icons-png.flaticon.com/512/1041/1041916.png',
+          tag: `app-toast-${id}`,
+          renotify: true
+        } as any);
+        notif.onclick = () => {
+          window.focus();
+          notif.close();
+        };
+      } catch (err) {
+        console.warn("Desktop Notification from showNotification failed:", err);
+      }
+    }
+
+    if (playSound) {
+      playPing(title, message);
+    }
 
     if (duration > 0) {
       setTimeout(() => {
         dismissNotification(id);
       }, duration);
     }
-  }, [dismissNotification]);
+  }, [dismissNotification, playPing]);
 
   const showError = useCallback((title: string, error: any, customMessage?: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -119,8 +169,16 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   };
 
   return (
-    <NotificationContext.Provider value={{ showNotification, showError, dismissNotification }}>
+    <NotificationContext.Provider value={{ showNotification, showError, dismissNotification, playPing }}>
       {children}
+      
+      {/* HTML5 Audio element for WhatsApp-like ping sound */}
+      <audio 
+        ref={audioRef} 
+        src="https://assets.mixkit.co/active_storage/sfx/2357/2357-84.wav" 
+        preload="auto" 
+        className="hidden"
+      />
       
       {/* Toast Notification Stack Container */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 max-w-sm w-full font-sans">

@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
 import { dbService } from '../db';
 import { Profile } from '../types';
 import { useNotification } from './NotificationContext';
@@ -25,7 +25,7 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
   const [editApproved, setEditApproved] = useState(true);
   const [editPhotoUrl, setEditPhotoUrl] = useState('');
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {

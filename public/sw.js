@@ -1,20 +1,22 @@
-const CACHE_NAME = 'krishok-bazar-admin-v1';
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = 'krishok-bazar-admin-v2';
+
+const NETWORK_FIRST_PATHS = [
   '/',
   '/index.html',
-  '/manifest.json',
-  '/src/main.tsx',
-  '/src/App.tsx',
-  '/src/index.css',
-  '/src/db.ts',
-  '/src/types.ts'
+  '/version.json',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(() => {
-        // Safe check for offline caching
+      // Cache the critical shell paths
+      return cache.addAll([
+        '/',
+        '/index.html',
+        '/manifest.json'
+      ]).catch((err) => {
+        console.warn('SW: Pre-caching critical files failed or offline:', err);
       });
     })
   );
@@ -27,6 +29,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('SW: Purging old cache:', key);
             return caches.delete(key);
           }
         })
@@ -37,33 +40,73 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests and local scope
-  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+  if (event.request.method !== 'GET') {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+  const url = new Date(event.request.url);
+  const isLocal = url.origin === self.location.origin;
 
-      return fetch(event.request)
+  if (!isLocal) {
+    return;
+  }
+
+  const path = url.pathname;
+
+  // Let Firestore/REST API bypass Service Worker cache entirely
+  if (path.includes('/api/') || path.includes('firestore') || url.hostname.includes('firebase')) {
+    return;
+  }
+
+  // Network-First Strategy for critical landing, HTML shell, and version configs
+  const isNetworkFirst = NETWORK_FIRST_PATHS.some((p) => path === p || path.endsWith(p));
+
+  if (isNetworkFirst) {
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
           }
-
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-
           return response;
         })
         .catch(() => {
-          // Fallback or empty handle
+          return caches.match(event.request);
+        })
+    );
+  } else {
+    // Stale-While-Revalidate for other static media, assets, links, fonts
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          // Fetch backend update in background to update cache for next load
+          fetch(event.request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(event.request, networkResponse);
+                });
+              }
+            })
+            .catch(() => {
+              // Ignore background update errors
+            });
+          return cachedResponse;
+        }
+
+        return fetch(event.request).then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return response;
         });
-    })
-  );
+      })
+    );
+  }
 });

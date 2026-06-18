@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent, ChangeEvent, useMemo } from 'react';
 import { dbService } from '../db';
 import { ChatMessage, Profile, ChatGroup } from '../types';
 import { useNotification } from './NotificationContext';
+import { playIncomingTone, playOutgoingTone } from '../utils/audio';
 import { 
   Send, 
   User, 
@@ -64,12 +65,20 @@ const formatPopText = (text: string, isMyMessage: boolean) => {
 };
 
 export default function FloatingChat() {
-  const currentUser = dbService.getCurrentUser();
+  const currentUserRaw = dbService.getCurrentUser();
+  const currentUser = useMemo(() => currentUserRaw, [
+    currentUserRaw?.id,
+    currentUserRaw?.phone,
+    currentUserRaw?.name,
+    currentUserRaw?.role
+  ]);
+  
   if (!currentUser) return null; // Only render when authenticated
 
   const { showNotification } = useNotification();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [operators, setOperators] = useState<Profile[]>([]);
   const [chatGroups, setChatGroups] = useState<ChatGroup[]>([]);
   
@@ -92,6 +101,29 @@ export default function FloatingChat() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
+
+  // Filter messages for active thread
+  const allMessagesMerged = useMemo(() => {
+    const syncedIds = new Set(messages.map(m => m.id));
+    const pendingOptimistic = optimisticMessages.filter(om => !syncedIds.has(om.id));
+    return [...messages, ...pendingOptimistic];
+  }, [messages, optimisticMessages]);
+
+  const activeMessages = useMemo(() => {
+    return allMessagesMerged.filter(msg => {
+      if (activeReceiverId === 'all') {
+        return msg.receiver_id === 'all';
+      } else if (activeReceiverId.startsWith('group_') || chatGroups.some(g => g.id === activeReceiverId)) {
+        return msg.receiver_id === activeReceiverId;
+      } else {
+        const myId = currentUser.id || currentUser.phone || '';
+        return (
+          (msg.sender_id === myId && msg.receiver_id === activeReceiverId) ||
+          (msg.sender_id === activeReceiverId && msg.receiver_id === myId)
+        );
+      }
+    });
+  }, [allMessagesMerged, activeReceiverId, chatGroups, currentUser]);
 
   // Subscriptions
   useEffect(() => {
@@ -130,11 +162,7 @@ export default function FloatingChat() {
         const isForMe = latest.receiver_id === 'all' || latest.receiver_id === myId || chatGroups.some(g => g.id === latest.receiver_id);
         
         if (isForMe && (!isOpen || activeReceiverId !== latest.sender_id)) {
-          try {
-            const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2357/2357-84.wav");
-            audio.volume = 0.45;
-            audio.play().catch(() => {});
-          } catch (e) {}
+          playIncomingTone();
         }
       }
       if (latest) {
@@ -152,7 +180,7 @@ export default function FloatingChat() {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
     }
-  }, [messages, activeReceiverId, activeTab, isOpen]);
+  }, [activeMessages, activeReceiverId, activeTab, isOpen]);
 
   // Mark unseen as read
   useEffect(() => {
@@ -196,19 +224,35 @@ export default function FloatingChat() {
         }
       }
 
-      await dbService.sendChatMessage({
+      const msgId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+      const optimisticMsg: ChatMessage = {
+        id: msgId,
         sender_id: currentUser.id || currentUser.phone || 'unknown',
         sender_name: currentUser.name || 'Anonymous',
         sender_role: currentUser.role,
         receiver_id: activeReceiverId,
         receiver_name: activeReceiverName,
         message: finalMsg,
-        image_url: attachedBase64 || undefined
-      });
+        image_url: attachedBase64 || undefined,
+        timestamp: new Date().toISOString(),
+        seen: false
+      };
 
+      // Reset fields immediately
       setInputText('');
       setAttachedBase64(null);
       setAttachedFileName(null);
+
+      // Instantly add message to optimistic state
+      setOptimisticMessages(prev => [...prev, optimisticMsg]);
+      playOutgoingTone();
+
+      // Fire the request in background
+      dbService.sendChatMessage(optimisticMsg).catch(err => {
+        console.error("Failed to post message:", err);
+      }).finally(() => {
+        setOptimisticMessages(prev => prev.filter(m => m.id !== msgId));
+      });
     } catch (err) {
       console.error(err);
     }
@@ -244,21 +288,6 @@ export default function FloatingChat() {
       setSelectedMemberIds([...selectedMemberIds, id]);
     }
   };
-
-  // Filter messages for active thread
-  const activeMessages = messages.filter(msg => {
-    if (activeReceiverId === 'all') {
-      return msg.receiver_id === 'all';
-    } else if (activeReceiverId.startsWith('group_') || chatGroups.some(g => g.id === activeReceiverId)) {
-      return msg.receiver_id === activeReceiverId;
-    } else {
-      const myId = currentUser.id || currentUser.phone || '';
-      return (
-        (msg.sender_id === myId && msg.receiver_id === activeReceiverId) ||
-        (msg.sender_id === activeReceiverId && msg.receiver_id === myId)
-      );
-    }
-  });
 
   return (
     <div className="fixed bottom-6 right-6 z-50 font-sans hidden md:block">

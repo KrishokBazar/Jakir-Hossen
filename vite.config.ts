@@ -1,11 +1,33 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss(),
+      {
+        name: 'generate-version-json',
+        buildStart() {
+          const publicDir = path.resolve(__dirname, 'public');
+          if (!fs.existsSync(publicDir)) {
+            fs.mkdirSync(publicDir, { recursive: true });
+          }
+          const versionData = { 
+            version: Date.now().toString(),
+            buildTime: new Date().toISOString()
+          };
+          fs.writeFileSync(
+            path.resolve(publicDir, 'version.json'), 
+            JSON.stringify(versionData, null, 2)
+          );
+          console.log('Generated production version.json with build timestamp:', versionData.buildTime);
+        }
+      }
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
