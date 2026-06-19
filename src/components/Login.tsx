@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { dbService } from '../db';
-import { Leaf, LogIn, UserPlus, Phone, Lock, User, MapPin, CheckCircle, Loader2, ShieldAlert, BadgeInfo, Eye, EyeOff } from 'lucide-react';
+import { safeStorage } from '../utils/storage';
+import { Leaf, LogIn, UserPlus, Phone, Lock, User, MapPin, CheckCircle, Loader2, ShieldAlert, BadgeInfo, Eye, EyeOff, Smartphone, ArrowDownToLine, Sparkles } from 'lucide-react';
 import { constructWhatsAppAdminNotificationUrl } from '../utils/whatsapp';
 
 interface LoginProps {
@@ -16,10 +17,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   
   // Login State
   const [loginId, setLoginId] = useState(() => {
-    return localStorage.getItem('savedOperatorPhone') || '';
+    return safeStorage.getItem('savedOperatorPhone') || '';
   });
   const [loginPassword, setLoginPassword] = useState(() => {
-    return localStorage.getItem('savedOperatorPassword') || '';
+    return safeStorage.getItem('savedOperatorPassword') || '';
   });
 
   // Register State
@@ -32,6 +33,37 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   // Real-time listener for already registered operator pending approval
   const [pendingApprovalPhone, setPendingApprovalPhone] = useState<string | null>(null);
   const [pendingApprovalPassword, setPendingApprovalPassword] = useState<string>('');
+
+  // PWA Installation & Mobile Detection State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showIosTip, setShowIosTip] = useState(false);
+
+  useEffect(() => {
+    // Check if the app is already running in standalone (installed) mode
+    const isPwa = window.matchMedia('(display-mode: standalone)').matches || 
+                  (window.navigator as any).standalone === true;
+    setIsStandalone(isPwa);
+
+    const handleBeforePrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      console.log("PWA: 'beforeinstallprompt' event captured successfully.");
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforePrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforePrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`PWA: Install choice outcome: ${outcome}`);
+    setDeferredPrompt(null);
+  };
 
   // Monitor newly registered operator approval status in real-time
   useEffect(() => {
@@ -91,8 +123,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         const cleanPhone = loginId.trim();
         setPendingApprovalPhone(cleanPhone);
         setPendingApprovalPassword(loginPassword);
-        localStorage.setItem('savedOperatorPhone', cleanPhone);
-        localStorage.setItem('savedOperatorPassword', loginPassword);
+        safeStorage.setItem('savedOperatorPhone', cleanPhone);
+        safeStorage.setItem('savedOperatorPassword', loginPassword);
       }
       setError(authError);
       setLoading(false);
@@ -100,8 +132,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
 
     if (loginRole === 'operator') {
-      localStorage.setItem('savedOperatorPhone', loginId.trim());
-      localStorage.setItem('savedOperatorPassword', loginPassword);
+      safeStorage.setItem('savedOperatorPhone', loginId.trim());
+      safeStorage.setItem('savedOperatorPassword', loginPassword);
     }
 
     setLoading(false);
@@ -138,8 +170,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
 
     // Save registered credentials so they are preloaded and visible automatically
-    localStorage.setItem('savedOperatorPhone', regPhone.trim());
-    localStorage.setItem('savedOperatorPassword', regPassword);
+    safeStorage.setItem('savedOperatorPhone', regPhone.trim());
+    safeStorage.setItem('savedOperatorPassword', regPassword);
     setLoginId(regPhone.trim());
     setLoginPassword(regPassword);
 
@@ -537,6 +569,69 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* MOBILE APPLICATION INSTALLATION PORTAL */}
+      <div className="sm:mx-auto sm:w-full sm:max-w-md mt-4 px-4 sm:px-0">
+        {isStandalone ? (
+          <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-2xl p-4 text-center text-emerald-800 text-xs font-bold leading-relaxed shadow-xs flex items-center justify-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>ইনস্টলড অ্যাপ মোড সক্রিয় (Installed App Mode Active) • Krishok Bazar is registered on your Home Screen.</span>
+          </div>
+        ) : (
+          <div className="bg-white/90 backdrop-blur-md border border-emerald-100 rounded-2xl p-4 shadow-lg text-slate-700">
+            <div className="flex items-center gap-2 mb-2 text-slate-900">
+              <Smartphone className="w-5 h-5 text-emerald-600" />
+              <h3 className="text-sm font-bold text-slate-900">মোবাইল অ্যাপ সহজে ইনস্টল করুন (Install App)</h3>
+            </div>
+            
+            <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+              Krishok Bazar অ্যাপটি মোবাইল স্ক্রিনে ইনস্টল করে সরাসরি প্রবেশ করুন। এটি ব্রাউজার বার ছাড়া সম্পূর্ণ স্ক্রিনে অনেক দ্রুত ও রিয়েল-টাইমে চলবে।
+            </p>
+
+            {deferredPrompt ? (
+              <button
+                type="button"
+                onClick={handleInstallApp}
+                className="w-full inline-flex justify-center items-center gap-2 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg active:scale-98 transition-all cursor-pointer"
+              >
+                <ArrowDownToLine className="w-4 h-4" />
+                আপনার ফোনে অ্যাপ ইনস্টল করুন (Install App NOW)
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowIosTip(!showIosTip)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 font-sans">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                    আইফোন বা এন্ড্রয়েড ফোনে ইনস্টল করার গাইড
+                  </span>
+                  <span className="text-[10px] text-emerald-600 font-bold">{showIosTip ? 'বন্ধ করুন' : 'বিস্তারিত দেখুন'}</span>
+                </button>
+
+                {showIosTip && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 text-[11px] leading-relaxed text-slate-600 space-y-1.5 animate-fade-in select-none">
+                    <p className="font-bold text-slate-800">🍎 Apple / iOS (Safari ব্রাউজার):</p>
+                    <ol className="list-decimal list-inside pl-1 space-y-0.5 text-slate-600">
+                      <li>সাফারি ব্রাউজারে নিচের <span className="font-bold text-slate-800">শেয়ার (Share)</span> বাটন ট্যাপ করুন।</li>
+                      <li>মেনুটি স্ক্রোল করে নিচের <span className="font-bold text-slate-800">Add to Home Screen</span> ট্যাপ করুন।</li>
+                      <li>উপরে ডান কোণায় <span className="font-bold text-slate-800">Add</span> বাটন ট্যাপ করলেই ফোনে চলে আসবে।</li>
+                    </ol>
+                    <div className="h-px bg-slate-200 my-1.5"/>
+                    <p className="font-bold text-slate-800">🤖 Android (Chrome / Opera):</p>
+                    <ol className="list-decimal list-inside pl-1 space-y-0.5 text-slate-600">
+                      <li>ক্রোম ব্রাউজারে উপরে ডান কোণে <span className="font-bold text-slate-800">৩-ডট</span> ট্যাপ করুন।</li>
+                      <li>তালিকায় <span className="font-bold text-slate-800">Install App</span> বা <span className="font-bold text-slate-800">Add to Home Screen</span> ট্যাপ করুন।</li>
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { dbService } from '../db';
 import { CostSettings, Profile, Order } from '../types';
 import { useNotification } from './NotificationContext';
-import { Sliders, HelpCircle, Save, TrendingUp, AlertCircle, RefreshCw, BarChart2, DollarSign } from 'lucide-react';
+import { Sliders, HelpCircle, Save, TrendingUp, AlertCircle, RefreshCw, BarChart2, DollarSign, Palette } from 'lucide-react';
 
 interface CostSettingsProps {
   user: Profile;
@@ -18,6 +18,7 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
   const [percent, setPercent] = useState(40);
   const [delivery, setDelivery] = useState(50);
   const [otherFixed, setOtherFixed] = useState(0);
+  const [theme, setTheme] = useState<'green' | 'blue' | 'purple' | 'orange' | 'charcoal'>('green');
 
   // Financial Stats
   const [orders, setOrders] = useState<Order[]>([]);
@@ -31,6 +32,7 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
       setPercent(data.product_cost_percent);
       setDelivery(data.default_delivery_cost);
       setOtherFixed(data.other_fixed_cost);
+      setTheme(data.theme || 'green');
 
       const ords = await dbService.getOrders();
       setOrders(ords);
@@ -56,9 +58,13 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
           product_cost_percent: percent,
           default_delivery_cost: delivery,
           other_fixed_cost: otherFixed,
+          theme: theme,
         },
         user.id
       );
+
+      localStorage.setItem('branch_theme', theme);
+      window.dispatchEvent(new Event('local-theme-updated'));
 
       setSaveSuccess(true);
       showNotification("Success", "Settings update cataloged successfully!", "success");
@@ -198,6 +204,42 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
               </div>
               <p className="mt-1 text-[10px] text-slate-450">
                 Default backup overhead costs (carrying, wrapping, etc.).
+              </p>
+            </div>
+
+            {/* Company Branding / Branch Color Scheme Accent Settings */}
+            <div className="border-t border-slate-100 pt-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                <Palette className="w-4 h-4 text-emerald-600 shrink-0" />
+                কোম্পানি ব্র্যান্ডিং থিম (Branch Branding Theme)
+              </label>
+              
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { value: 'green', name: 'সবুজ', label: 'Default', bg: 'bg-emerald-600' },
+                  { value: 'blue', name: 'নীল', label: 'Royal', bg: 'bg-blue-600' },
+                  { value: 'purple', name: 'বেগুনী', label: 'Crimson', bg: 'bg-purple-600' },
+                  { value: 'orange', name: 'সোনালী', label: 'Golden', bg: 'bg-orange-600' },
+                  { value: 'charcoal', name: 'ধূসর', label: 'Slate', bg: 'bg-slate-700' },
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setTheme(item.value as any)}
+                    className={`flex flex-col items-center p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                      theme === item.value 
+                        ? 'border-emerald-600 bg-emerald-50/40 ring-1 ring-emerald-500 shadow-3xs' 
+                        : 'border-slate-200 bg-slate-50/55 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 rounded-full ${item.bg} block shadow-3xs border border-white shrink-0`} />
+                    <span className="text-[10px] font-bold text-slate-800 mt-1 block truncate leading-none">{item.name}</span>
+                    <span className="text-[8px] text-slate-450 block mt-0.5 truncate leading-none uppercase tracking-wider">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-slate-450 leading-relaxed">
+                স্থানীয় শাখার ব্র্যান্ড ডিজাইনের সাথে সামঞ্জস্য রাখতে সমগ্র সিস্টেমের রঙ ও থিম পরিবর্তন করতে সাহায্য করবে।
               </p>
             </div>
 

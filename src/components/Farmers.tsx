@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent, SVGProps, ChangeEvent } from 'react';
+import { useEffect, useState, FormEvent, SVGProps, ChangeEvent, useRef } from 'react';
 import { dbService } from '../db';
 import { Farmer, FarmerPayment, FarmerSale, Profile } from '../types';
 import { useNotification } from './NotificationContext';
@@ -18,7 +18,9 @@ import {
   Plus, 
   ArrowRight,
   Calculator,
-  UserCheck
+  UserCheck,
+  Mic,
+  MicOff
 } from 'lucide-react';
 
 interface FarmersProps {
@@ -32,6 +34,104 @@ export default function Farmers({ user }: FarmersProps) {
   const [payments, setPayments] = useState<FarmerPayment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Web Speech API integration states
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechLang, setSpeechLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [isDictating, setIsDictating] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+    }
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Silent catch
+        }
+      }
+    };
+  }, []);
+
+  const toggleSpeech = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotification(
+        "ভয়েস অসমর্থিত", 
+        "আপনার ব্রাউজার বা ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে গুগল ক্রোম ব্রাউজার ব্যবহার করুন।", 
+        "error"
+      );
+      return;
+    }
+
+    if (isDictating) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+      setIsDictating(false);
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLang;
+
+      rec.onstart = () => {
+        setIsDictating(true);
+        showNotification(
+          "ভয়েস সন্ধান শুরু হয়েছে", 
+          speechLang === 'bn-BD' ? "কৃষকের নাম বা গ্রাম বলুন..." : "Speak farmer name or village...", 
+          "info",
+          2500
+        );
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const query = transcript.trim().replace(/[।.]/g, ''); // Clear punctuation
+          setSearchQuery(query);
+          showNotification(
+            "অনুসন্ধান করা হচ্ছে", 
+            `"${query}" এর জন্য সন্ধান করা হচ্ছে`, 
+            "success"
+          );
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Farmer Search dictate error:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showNotification(
+            "ডিকটেশন রেকর্ড সাময়িকভাবে বাধাগ্রস্ত হয়েছে", 
+            `মাইক পারমিশন দিন। ত্রুটি: ${event.error}`, 
+            "error"
+          );
+        }
+        setIsDictating(false);
+      };
+
+      rec.onend = () => {
+        setIsDictating(false);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Farmer Voice search engine load failure:", err);
+      setIsDictating(false);
+    }
+  };
 
   // Selected Farmer details
   const [selectedFarmer, setSelectedFarmer] = useState<Farmer | null>(null);
@@ -572,15 +672,63 @@ export default function Farmers({ user }: FarmersProps) {
         
         {/* Left 2 Columns: Table and Search */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden space-y-4 p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="কৃষকের নাম, মোবাইল নম্বর অথবা গ্রাম দিয়ে খুঁজুন..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500 bg-slate-50/50"
-            />
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="কৃষকের নাম, মোবাইল নম্বর অথবা গ্রাম দিয়ে খুঁজুন..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-10 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500 bg-slate-50/50 font-medium"
+              />
+              {speechSupported && (
+                <button
+                  type="button"
+                  onClick={toggleSpeech}
+                  className={`absolute right-2 top-1.5 py-0.5 px-1.5 rounded transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                    isDictating
+                      ? 'bg-rose-500 text-white animate-pulse'
+                      : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100'
+                  }`}
+                  title={isDictating ? "ভয়েস বন্ধ করুন" : "ভয়েস দিয়ে খুঁজুন (Voice Search)"}
+                >
+                  {isDictating ? (
+                    <MicOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Mic className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+            
+            {speechSupported && (
+              <div className="flex items-center gap-1 self-start sm:self-center bg-slate-50 border border-slate-200 p-0.5 rounded-lg text-[10px] shrink-0 shadow-3xs select-none">
+                <span className="text-slate-400 px-1 font-bold">ভাষা:</span>
+                <button
+                  type="button"
+                  onClick={() => setSpeechLang('bn-BD')}
+                  className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+                    speechLang === 'bn-BD'
+                      ? 'bg-emerald-600 text-white shadow-3xs'
+                      : 'text-slate-500 hover:text-slate-900 bg-transparent'
+                  }`}
+                >
+                  বাংলা
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSpeechLang('en-US')}
+                  className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+                    speechLang === 'en-US'
+                      ? 'bg-emerald-600 text-white shadow-3xs'
+                      : 'text-slate-500 hover:text-slate-900 bg-transparent'
+                  }`}
+                >
+                  En
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto">

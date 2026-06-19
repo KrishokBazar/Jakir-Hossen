@@ -39,6 +39,7 @@ export interface Order {
   profit: number;
   order_date: string;
   notes?: string;
+  gps_location?: string;
 }
 
 export interface CostSettings {
@@ -48,6 +49,7 @@ export interface CostSettings {
   other_fixed_cost: number;
   updated_by?: string;
   updated_at: string;
+  theme?: 'green' | 'blue' | 'purple' | 'orange' | 'charcoal';
 }
 
 export interface DailyStat {

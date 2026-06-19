@@ -1,4 +1,5 @@
 import { db, auth } from './firebase';
+import { safeStorage } from './utils/storage';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
@@ -9,15 +10,78 @@ import {
   doc, 
   getDoc, 
   getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
+  setDoc as firebaseSetDoc, 
+  updateDoc as firebaseUpdateDoc, 
+  deleteDoc as firebaseDeleteDoc, 
   query, 
   where, 
   orderBy, 
   limit,
-  onSnapshot
+  onSnapshot,
+  DocumentReference
 } from 'firebase/firestore';
+import { queueOfflineMutation, registerBackgroundSync, setCachedData, getCachedData } from './utils/offlineSync';
+
+// Wrapper functions to intercept writes when offline and queue them in IndexedDB
+async function setDoc(docRef: DocumentReference<any, any>, data: any, options?: any) {
+  if (!navigator.onLine) {
+    console.log(`dbService offline: queuing setDoc for ${docRef.path}`);
+    await queueOfflineMutation('set', docRef.parent.id, docRef.id, data, options?.merge);
+    registerBackgroundSync();
+    return;
+  }
+  try {
+    return await firebaseSetDoc(docRef, data, options);
+  } catch (error) {
+    if (!navigator.onLine) {
+      console.warn("dbService fallback: setDoc failed due to network. Queuing offline.", error);
+      await queueOfflineMutation('set', docRef.parent.id, docRef.id, data, options?.merge);
+      registerBackgroundSync();
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function updateDoc(docRef: DocumentReference<any, any>, data: any) {
+  if (!navigator.onLine) {
+    console.log(`dbService offline: queuing updateDoc for ${docRef.path}`);
+    await queueOfflineMutation('update', docRef.parent.id, docRef.id, data);
+    registerBackgroundSync();
+    return;
+  }
+  try {
+    return await firebaseUpdateDoc(docRef, data);
+  } catch (error) {
+    if (!navigator.onLine) {
+      console.warn("dbService fallback: updateDoc failed due to network. Queuing offline.", error);
+      await queueOfflineMutation('update', docRef.parent.id, docRef.id, data);
+      registerBackgroundSync();
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function deleteDoc(docRef: DocumentReference<any, any>) {
+  if (!navigator.onLine) {
+    console.log(`dbService offline: queuing deleteDoc for ${docRef.path}`);
+    await queueOfflineMutation('delete', docRef.parent.id, docRef.id);
+    registerBackgroundSync();
+    return;
+  }
+  try {
+    return await firebaseDeleteDoc(docRef);
+  } catch (error) {
+    if (!navigator.onLine) {
+      console.warn("dbService fallback: deleteDoc failed due to network. Queuing offline.", error);
+      await queueOfflineMutation('delete', docRef.parent.id, docRef.id);
+      registerBackgroundSync();
+    } else {
+      throw error;
+    }
+  }
+}
 import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup } from './types';
 
 // Supabase fallback modes (disabled to prefer Firebase)
@@ -276,7 +340,7 @@ export const dbService = {
         return { user: {} as Profile, error: 'Approval pending: Admin must approve your registration via WhatsApp.' };
       }
 
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profileData));
+      safeStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profileData));
       return { user: profileData };
     } catch (error) {
       return { user: {} as Profile, error: error instanceof Error ? error.message : 'Authentication process failed.' };
@@ -317,7 +381,7 @@ export const dbService = {
   },
 
   signOut(): void {
-    localStorage.removeItem(CURRENT_USER_KEY);
+    safeStorage.removeItem(CURRENT_USER_KEY);
     try {
       firebaseSignOut(auth).catch(err => console.warn("Firebase Auth sign out ignored:", err));
     } catch (e) {
@@ -326,7 +390,7 @@ export const dbService = {
   },
 
   getCurrentUser(): Profile | null {
-    const u = localStorage.getItem(CURRENT_USER_KEY);
+    const u = safeStorage.getItem(CURRENT_USER_KEY);
     return u ? JSON.parse(u) : null;
   },
 
@@ -414,6 +478,7 @@ export const dbService = {
         product_cost_percent: Number(settings.product_cost_percent),
         default_delivery_cost: Number(settings.default_delivery_cost),
         other_fixed_cost: Number(settings.other_fixed_cost),
+        theme: settings.theme || 'green',
         updated_by: userId,
         updated_at: new Date().toISOString()
       }, { merge: true });
@@ -536,6 +601,7 @@ export const dbService = {
       delivery_cost: number;
       other_costs: number;
       notes?: string;
+      gps_location?: string;
     },
     operatorId: string
   ): Promise<Order> {
@@ -586,7 +652,8 @@ export const dbService = {
         total_cost: totalCost,
         profit: profit,
         order_date: new Date().toISOString(),
-        notes: orderData.notes || ''
+        notes: orderData.notes || '',
+        gps_location: orderData.gps_location || ''
       };
 
       await setDoc(doc(db, 'orders', orderId), newOrder);
@@ -799,6 +866,7 @@ export const dbService = {
         list.push(docRef.data() as Order);
       });
       const sorted = list.sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime());
+      setCachedData('orders', sorted).catch(err => console.error("Order caching failed:", err));
       onUpdate(sorted);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'orders');
@@ -814,6 +882,7 @@ export const dbService = {
         list.push(docRef.data() as Customer);
       });
       const sorted = list.sort((a, b) => a.name.localeCompare(b.name));
+      setCachedData('customers', sorted).catch(err => console.error("Customer caching failed:", err));
       onUpdate(sorted);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'customers');
@@ -829,6 +898,7 @@ export const dbService = {
         list.push(docRef.data() as Profile);
       });
       const sorted = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setCachedData('operators', sorted).catch(err => console.error("Operators caching failed:", err));
       onUpdate(sorted);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'profiles');

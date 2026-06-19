@@ -80,7 +80,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     setExpandedDetailsId((prev) => (prev === id ? null : prev));
   }, []);
 
-  const showNotification = useCallback((title: string, message: string, type: NotificationType, duration = 6000, playSound = false) => {
+  const showNotification = useCallback((title: string, message: string, type: NotificationType, duration = 15000, playSound = true) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newNotification: Notification = { id, title, message, type, duration };
     
@@ -157,12 +157,13 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       title,
       message,
       type: 'error',
-      duration: parsedDetails ? 12000 : 7000, // Keep firebase errors visible longer
+      duration: parsedDetails ? 20000 : 15000, // Keep errors visible longer
       technicalDetails: parsedDetails
     };
 
     setNotifications((prev) => [...prev, newNotification]);
-  }, []);
+    playPing(title, message); // Always keep sound notifications on
+  }, [playPing]);
 
   const toggleDetails = (id: string) => {
     setExpandedDetailsId((prev) => (prev === id ? null : id));

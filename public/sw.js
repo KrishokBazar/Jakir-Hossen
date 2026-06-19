@@ -44,7 +44,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const url = new Date(event.request.url);
+  const url = new URL(event.request.url);
   const isLocal = url.origin === self.location.origin;
 
   if (!isLocal) {
@@ -110,3 +110,23 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// PWA Background Synchronization Listener
+async function notifyClientsToSync() {
+  try {
+    const clientsList = await self.clients.matchAll({ type: 'window' });
+    console.log(`SW Sync: Informing ${clientsList.length} window clients to trigger synchronization.`);
+    for (const client of clientsList) {
+      client.postMessage({ type: 'TRIGGER_OFFLINE_SYNC' });
+    }
+  } catch (err) {
+    console.error("SW Sync: Error posting sync message to clients:", err);
+  }
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'firestore-sync') {
+    event.waitUntil(notifyClientsToSync());
+  }
+});
+

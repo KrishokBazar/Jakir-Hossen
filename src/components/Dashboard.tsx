@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, FormEvent } from 'react';
 import { dbService } from '../db';
-import { DailyStat, Profile, Order, Expense } from '../types';
+import { DailyStat, Profile, Order, Expense, DailyLog } from '../types';
 import { useNotification } from './NotificationContext';
+import AddToHomeScreenCTA from './AddToHomeScreenCTA';
 import { 
   BarChart, 
   Bar, 
@@ -24,7 +25,14 @@ import {
   Activity,
   ArrowRight,
   Coins,
-  Leaf
+  Leaf,
+  Mic,
+  MicOff,
+  ClipboardList,
+  Trash2,
+  Copy,
+  Plus,
+  Check
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -53,6 +61,210 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
     };
     chartData: DailyStat[];
   } | null>(null);
+
+  // Daily Operations Log entry states
+  const [logDescription, setLogDescription] = useState('');
+  const [logEventType, setLogEventType] = useState<'Equipment Maintenance' | 'Visitor Check-in' | 'Site Incident' | 'General Note' | 'Supply Delivery' | 'Other'>('General Note');
+  const [logResolved, setLogResolved] = useState(false);
+  const [logResolutionNotes, setLogResolutionNotes] = useState('');
+  const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+
+  // Web Speech API states
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechLang, setSpeechLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [activeDictationField, setActiveDictationField] = useState<'description' | 'resolutionNotes' | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Ephemeral Quick Notes scratchpad state
+  const [ephemeralNotes, setEphemeralNotes] = useState<Array<{ id: string; text: string; created_at: string; completed: boolean }>>(() => {
+    try {
+      const saved = localStorage.getItem('ephemeral_notes');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [newNoteText, setNewNoteText] = useState('');
+
+  // Auto-persist ephemeral notes to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('ephemeral_notes', JSON.stringify(ephemeralNotes));
+    } catch (e) {
+      console.warn("localStorage save failed for ephemeral_notes:", e);
+    }
+  }, [ephemeralNotes]);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+    }
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  const toggleSpeechRecognition = (field: 'description' | 'resolutionNotes') => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotification(
+        "ভয়েস অসমর্থিত", 
+        "আপনার ব্রাউজার বা ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে গুগল ক্রোম ব্রাউজার ব্যবহার করুন।", 
+        "error"
+      );
+      return;
+    }
+
+    if (activeDictationField === field) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      setActiveDictationField(null);
+      return;
+    }
+
+    // Stop active if any
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLang;
+
+      rec.onstart = () => {
+        setActiveDictationField(field);
+        showNotification(
+          "ভয়েস ডিকটেশন শুরু হয়েছে", 
+          speechLang === 'bn-BD' ? "বাংলায় আপনার বিবরণটি বলুন..." : "Speak details in English...", 
+          "info",
+          2500
+        );
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const processedText = transcript.trim().replace(/[।.]/g, ''); // Clear punctuation
+          if (field === 'description') {
+            setLogDescription(prev => prev ? `${prev} ${processedText}` : processedText);
+          } else {
+            setLogResolutionNotes(prev => prev ? `${prev} ${processedText}` : processedText);
+          }
+          showNotification(
+            "ভয়েস ইনপুট গৃহীত হয়েছে", 
+            `"${processedText}" বিবরণীতে যোগ করা হয়েছে`, 
+            "success"
+          );
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Dashboard logger voice error:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showNotification(
+            "ডিকটেশন রেকর্ড সাময়িকভাবে বাধাগ্রস্ত হয়েছে", 
+            `মাইক পারমিশন দিন। ত্রুটি: ${event.error}`, 
+            "error"
+          );
+        }
+        setActiveDictationField(null);
+      };
+
+      rec.onend = () => {
+        setActiveDictationField(null);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Dashboard Speech Engine load error:", err);
+      setActiveDictationField(null);
+    }
+  };
+
+  const handleAddQuickLog = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!logDescription.trim()) {
+      showNotification("সতর্কতা", "লগের বর্ণনা খালি রাখা যাবে না।", "error");
+      return;
+    }
+
+    setIsSubmittingLog(true);
+    try {
+      const logId = `log_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const newLog: DailyLog = {
+        id: logId,
+        date: new Date().toISOString().split('T')[0],
+        operator_id: user.id,
+        operator_name: user.name,
+        event_type: logEventType,
+        description: logDescription.trim(),
+        resolved: logResolved,
+        created_at: new Date().toISOString(),
+        ...(logResolved ? { resolution_notes: logResolutionNotes.trim() } : {})
+      };
+
+      await dbService.addDailyLog(newLog);
+      
+      showNotification("সফল হয়েছে", "ড্যাশবোর্ড থেকে সফলভাবে নতুন অপারেশন লগ যুক্ত করা হয়েছে।", "success");
+      
+      // Reset state fields
+      setLogDescription('');
+      setLogResolved(false);
+      setLogResolutionNotes('');
+      setLogEventType('General Note');
+    } catch (err: any) {
+      showError("লগ যুক্ত করতে সমস্যা হয়েছে", err);
+    } finally {
+      setIsSubmittingLog(false);
+    }
+  };
+
+  const handleAddEphemeralNote = (e: FormEvent) => {
+    e.preventDefault();
+    if (!newNoteText.trim()) return;
+
+    const newNote = {
+      id: `note_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      text: newNoteText.trim(),
+      created_at: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      completed: false
+    };
+
+    setEphemeralNotes(prev => [newNote, ...prev]);
+    setNewNoteText('');
+    showNotification("নোট যুক্ত হয়েছে", "অস্থায়ী নোটবুক-এ সফলভাবে মেমোটি যুক্ত হয়েছে।", "success", 1500);
+  };
+
+  const handleToggleNoteCompleted = (id: string) => {
+    setEphemeralNotes(prev => prev.map(note => 
+      note.id === id ? { ...note, completed: !note.completed } : note
+    ));
+  };
+
+  const handleDeleteEphemeralNote = (id: string) => {
+    setEphemeralNotes(prev => prev.filter(note => note.id !== id));
+    showNotification("নোট মুছে ফেলা হয়েছে", "মেমোটি অপসারিত হয়েছে।", "info", 1500);
+  };
+
+  const handleClearAllEphemeralNotes = () => {
+    if (window.confirm("আপনি কি সব অস্থায়ী মেমো মুছে ফেলতে চান? (Are you sure you want to clear all notes?)")) {
+      setEphemeralNotes([]);
+      showNotification("সাফ করা হয়েছে", "সব মেমো সফলভাবে পরিষ্কার করা হয়েছে।", "info", 1500);
+    }
+  };
 
   useEffect(() => {
     let unsubscribeOps = () => {};
@@ -193,6 +405,9 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
           <Activity className="w-48 h-48 stroke-[1]" />
         </div>
       </div>
+
+      {/* Modern 'Add to Home Screen' CTA Installer section */}
+      <AddToHomeScreenCTA />
 
       {/* Grid of Key Numerical Analytics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -576,6 +791,300 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Daily Operations Log Quick-Entry Widget */}
+          <div className="bg-bento-card p-5 rounded-bento border border-bento-border shadow-bento space-y-4">
+            <div className="flex items-center justify-between border-b border-bento-border pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-orange-50 text-orange-600 block">
+                  <ClipboardList className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">অপারেশন কুইক লগ</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase">ভয়েস ডিকটেশন সহ সরাসরি ড্যাশবোর্ড আপডেট</p>
+                </div>
+              </div>
+
+              {/* Speech Engine Language Selector */}
+              {speechSupported && (
+                <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-3xs shrink-0 select-none scale-90">
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('bn-BD')}
+                    className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold cursor-pointer transition-all ${
+                      speechLang === 'bn-BD' 
+                        ? 'bg-emerald-600 text-white shadow-3xs' 
+                        : 'text-slate-500 hover:text-slate-800 bg-transparent'
+                    }`}
+                  >
+                    বাংলা
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('en-US')}
+                    className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold cursor-pointer transition-all ${
+                      speechLang === 'en-US' 
+                        ? 'bg-emerald-600 text-white shadow-3xs' 
+                        : 'text-slate-505 hover:text-slate-800 bg-transparent'
+                    }`}
+                  >
+                    En
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Dictation Status Bar */}
+            {speechSupported && activeDictationField && (
+              <div className="flex items-center justify-between bg-emerald-50/55 border border-emerald-100 rounded-lg px-2.5 py-1.5 text-[10px] select-none animate-pulse">
+                <div className="flex items-center gap-1 font-bold text-emerald-800">
+                  <span className="flex h-1.5 w-1.5 relative shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  <span>ভয়েস সচল: {activeDictationField === 'description' ? 'বিবরণ' : 'সমাধান'} (Speaking...)</span>
+                </div>
+              </div>
+            )}
+
+            {/* Quick entry Form */}
+            <form onSubmit={handleAddQuickLog} className="space-y-3.5">
+              {/* Event Type selection */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  ঘটনার ধরণ (Event Type)
+                </label>
+                <select
+                  value={logEventType}
+                  onChange={(e: any) => setLogEventType(e.target.value)}
+                  className="w-full text-xs px-2.5 py-2 bg-white text-slate-700 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+                >
+                  <option value="General Note">General Note (সাধারণ নোট)</option>
+                  <option value="Equipment Maintenance">Equipment Maintenance (যন্ত্রপাতি রক্ষণাবেক্ষণ)</option>
+                  <option value="Visitor Check-in">Visitor Check-in (পরিদর্শক আগমন)</option>
+                  <option value="Site Incident">Site Incident (সাইট দুর্ঘটনা/সমস্যা)</option>
+                  <option value="Supply Delivery">Supply Delivery (পণ্য বা ডেলিভারি আপডেট)</option>
+                  <option value="Other">Other (অন্যান্য)</option>
+                </select>
+              </div>
+
+              {/* Description field */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  মূল বিবরণী (Event Description)
+                </label>
+                <div className="flex gap-1.5">
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="নোট বা বিবরণ লিখুন (বা মাইকে ক্লিক করে বলুন)..."
+                    value={logDescription}
+                    onChange={(e) => setLogDescription(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-white text-slate-700 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium flex-1 resize-none"
+                  />
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSpeechRecognition('description')}
+                      className={`px-2.5 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                        activeDictationField === 'description'
+                          ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                      }`}
+                      title={activeDictationField === 'description' ? "ভয়েস বন্ধ করুন" : "ভয়েস দিয়ে বিবরণ লিখুন"}
+                    >
+                      {activeDictationField === 'description' ? (
+                        <MicOff className="w-4.5 h-4.5" />
+                      ) : (
+                        <Mic className="w-4.5 h-4.5 text-emerald-600" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Resolved Switch Toggle */}
+              <div className="flex items-center justify-between bg-slate-50/50 border border-slate-100 rounded-lg p-2 text-xs select-none">
+                <span className="font-semibold text-slate-700">সমস্যার কি সমাধান হয়েছে? (Resolved?)</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={logResolved}
+                    onChange={(e) => setLogResolved(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {/* Resolution Notes field if resolved is true */}
+              {logResolved && (
+                <div className="animate-fade-in-down space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    কিভাবে সমাধান হলো (Resolution Actions)
+                  </label>
+                  <div className="flex gap-1.5">
+                    <textarea
+                      required
+                      rows={2}
+                      placeholder="কিভাবে সমাধান করা হলো বা সম্পন্ন হলো লিখুন..."
+                      value={logResolutionNotes}
+                      onChange={(e) => setLogResolutionNotes(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-white text-slate-700 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium flex-1 resize-none"
+                    />
+                    {speechSupported && (
+                      <button
+                        type="button"
+                        onClick={() => toggleSpeechRecognition('resolutionNotes')}
+                        className={`px-2.5 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                          activeDictationField === 'resolutionNotes'
+                            ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                            : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                        }`}
+                        title={activeDictationField === 'resolutionNotes' ? "ভয়েস বন্ধ করুন" : "ভয়েস দিয়ে সমাধান লিখুন"}
+                      >
+                        {activeDictationField === 'resolutionNotes' ? (
+                          <MicOff className="w-4.5 h-4.5" />
+                        ) : (
+                          <Mic className="w-4.5 h-4.5 text-emerald-600" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Submit button */}
+              <button
+                type="submit"
+                disabled={isSubmittingLog}
+                className="w-full text-center py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 text-white font-bold rounded-lg text-xs transition-all cursor-pointer shadow-xs active:scale-95 duration-100"
+              >
+                {isSubmittingLog ? 'সংরক্ষণ করা হচ্ছে...' : 'লগ জমা দিন (Submit Quick Log)'}
+              </button>
+            </form>
+          </div>
+
+          {/* Quick Ephemeral Field Notes Scratchpad Widget */}
+          <div className="bg-bento-card p-5 rounded-bento border border-bento-border shadow-bento space-y-4">
+            <div className="flex items-center justify-between border-b border-bento-border pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-teal-50 text-teal-600 block">
+                  <FileText className="w-5 h-5 text-teal-600" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">অস্থায়ী নোটপ্যাড (Quick Notes)</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase">মাঠ পর্যায়ের অস্থায়ী খাতা • সরাসরি টাইপ করুন</p>
+                </div>
+              </div>
+              {ephemeralNotes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllEphemeralNotes}
+                  className="text-[10px] font-extrabold text-rose-500 hover:text-rose-600 hover:underline flex items-center gap-1 cursor-pointer transition-colors px-1.5 py-0.5 rounded"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  সব মুছুন
+                </button>
+              )}
+            </div>
+
+            {/* Quick entry form */}
+            <form onSubmit={handleAddEphemeralNote} className="flex gap-1.5">
+              <input
+                type="text"
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder="দ্রুত কোনো নোট বা মেমো লিখুন..."
+                className="flex-1 text-xs px-3 py-2 bg-white text-slate-700 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 font-medium"
+              />
+              <button
+                type="submit"
+                className="p-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                title="নোট যোগ করুন"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* Notes List */}
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+              {ephemeralNotes.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400 font-semibold border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  কোনো অস্থায়ী নোট নেই। উপরোক্ত ঘরে টাইপ করে কুইক মেমো মনে রাখুন।
+                </div>
+              ) : (
+                ephemeralNotes.map((note) => (
+                  <div 
+                    key={note.id} 
+                    className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
+                      note.completed 
+                        ? 'border-slate-100 bg-slate-50/70 opacity-60' 
+                        : 'border-teal-100/70 bg-gradient-to-br from-teal-50/20 to-emerald-50/10 hover:border-teal-200/90'
+                    }`}
+                  >
+                    {/* Checklist circle */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleNoteCompleted(note.id)}
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-all cursor-pointer ${
+                        note.completed 
+                          ? 'bg-teal-600 border-teal-600 text-white animate-fade-in' 
+                          : 'border-slate-300 hover:border-teal-500'
+                      }`}
+                    >
+                      {note.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </button>
+
+                    {/* Text and timestamp */}
+                    <div className="flex-1 min-w-0">
+                      <p 
+                        className={`text-xs text-slate-700 font-medium leading-relaxed break-words whitespace-pre-wrap ${
+                          note.completed ? 'line-through text-slate-400' : ''
+                        }`}
+                      >
+                        {note.text}
+                      </p>
+                      <span className="text-[9px] font-semibold font-mono text-slate-400 block mt-1 tracking-wide">
+                        ⏰ {note.created_at}
+                      </span>
+                    </div>
+
+                    {/* Copy and Delete buttons */}
+                    <div className="flex items-center gap-1 shrink-0 self-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(note.text);
+                          showNotification("কপি করা হয়েছে", "নোটের লেখা সফলভাবে ক্লিপবোর্ডে কপি হয়েছে।", "success", 1200);
+                        }}
+                        className="p-1 hover:bg-slate-100 rounded-md text-slate-400 hover:text-teal-600 transition-all cursor-pointer"
+                        title="কপি করুন"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEphemeralNote(note.id)}
+                        className="p-1 hover:bg-rose-50 rounded-md text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Disclaimer metadata */}
+            {ephemeralNotes.length > 0 && (
+              <div className="text-[9.5px] text-slate-400/85 font-semibold text-center uppercase tracking-wider flex justify-between items-center px-1 select-none">
+                <span>মোট মেমো: {ephemeralNotes.length} টি</span>
+                <span>* ব্রাউজার স্তরে সংরক্ষিত</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

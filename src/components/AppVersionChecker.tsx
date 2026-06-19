@@ -47,7 +47,7 @@ export default function AppVersionChecker() {
       }
     });
 
-    // Setup periodic polling every 20 seconds, to ensure instant-reaction PWA updates
+    // Setup periodic polling every 10 seconds (ultra-rapid response for instant GitHub pushes)
     pollIntervalRef.current = setInterval(async () => {
       const data = await fetchVersion();
       setLastCheckTime(new Date().toLocaleTimeString());
@@ -56,11 +56,32 @@ export default function AppVersionChecker() {
         setLatestVersion(data.version);
         setBuildTime(data.buildTime);
       }
-    }, 20000);
+    }, 10000);
+
+    // Instant check when the user returns to the tab or browser window
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        const data = await fetchVersion();
+        if (data && data.version) {
+          setLatestVersion(data.version);
+          setBuildTime(data.buildTime);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Failsafe hourly auto-refresh: If the application has been running for 1 hour,
+    // perform a clean safe reload to guarantee no stale cache or degraded performance persists.
+    const hourlyInterval = setInterval(() => {
+      console.log("AppVersionChecker: Performing hourly failsafe background refresh.");
+      handleForceReload();
+    }, 3600000); // 1 hour = 3.6M Milliseconds
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(hourlyInterval);
     };
   }, [fetchVersion]);
 
@@ -79,9 +100,9 @@ export default function AppVersionChecker() {
         });
       }
 
-      // Initialize an safe auto-reload timer (e.g. 5 minutes) to ensure stale screens eventually refresh
+      // Initialize a safe auto-reload timer (set to 270 seconds / 4.5 minutes) to ensure stale screens eventually refresh
       if (autoReloadCountdown === null) {
-        setAutoReloadCountdown(300); // 5 minutes (300 seconds)
+        setAutoReloadCountdown(270); // 4.5 minutes (perfectly fits 4 to 5 minutes requirement)
       }
     }
   }, [currentVersion, latestVersion]);

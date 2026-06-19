@@ -1,8 +1,9 @@
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
 import { dbService } from '../db';
 import { CostSettings, Customer, Profile } from '../types';
 import { useNotification } from './NotificationContext';
-import { ShoppingCart, Phone, User, MapPin, DollarSign, FileText, CheckCircle, Smartphone } from 'lucide-react';
+import { ShoppingCart, Phone, User, MapPin, DollarSign, FileText, CheckCircle, Smartphone, QrCode, Camera, Navigation, Compass, Locate, Loader2, Mic, MicOff } from 'lucide-react';
+import BarcodeScannerModal from './BarcodeScannerModal';
 
 interface OrderFormProps {
   user: Profile;
@@ -27,10 +28,239 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
   const [otherCostsStr, setOtherCostsStr] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Scanner and Device integration parameters
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  
+  // Geolocation Traceability state parameters
+  const [gpsCoords, setGpsCoords] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    timestamp: number;
+  } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Web Speech API Integration parameters and states
+  const [activeDictationField, setActiveDictationField] = useState<string | null>(null);
+  const [speechLang, setSpeechLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+    }
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Silent catch
+        }
+      }
+    };
+  }, []);
+
+  const convertBengaliToEnglishNumerals = (str: string): string => {
+    const bDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    let out = str;
+    for (let i = 0; i < 10; i++) {
+      out = out.replace(new RegExp(bDigits[i], 'g'), String(i));
+    }
+    return out;
+  };
+
+  const extractDigits = (str: string): string => {
+    const converted = convertBengaliToEnglishNumerals(str);
+    const matched = converted.match(/\d+(\.\d+)?/);
+    return matched ? matched[0] : '';
+  };
+
+  const toggleSpeechRecognition = (fieldName: string) => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotification(
+        "ভয়েস অসমর্থিত", 
+        "আপনার ব্রাউজার বা ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে গুগল ক্রোম ব্রাউজার ব্যবহার করুন।", 
+        "error"
+      );
+      return;
+    }
+
+    if (activeDictationField === fieldName) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+      setActiveDictationField(null);
+      return;
+    }
+
+    // Stop active dictations
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLang;
+
+      rec.onstart = () => {
+        setActiveDictationField(fieldName);
+        showNotification(
+          "ভয়েস রেকর্ড শুরু হয়েছে", 
+          speechLang === 'bn-BD' ? "অনুগ্রহ করে কথা বলুন..." : "Speak now...", 
+          "info",
+          2000
+        );
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const finalVal = transcript.trim();
+          if (fieldName === 'phone') {
+            const parsedDigitsOnly = convertBengaliToEnglishNumerals(finalVal).replace(/\D/g, '');
+            setPhone(parsedDigitsOnly);
+            showNotification("প্রাপ্ত ফোন নম্বর", parsedDigitsOnly, "success");
+          } else if (fieldName === 'name') {
+            setName(finalVal);
+            showNotification("প্রাপ্ত নাম", finalVal, "success");
+          } else if (fieldName === 'address') {
+            setAddress(finalVal);
+            showNotification("প্রাপ্ত ঠিকানা", finalVal, "success");
+          } else if (fieldName === 'amount') {
+            const digits = extractDigits(finalVal);
+            if (digits) {
+              handleAmountChange(digits);
+              showNotification("প্রাপ্ত টাকা", `৳${digits}`, "success");
+            } else {
+              showNotification("রিড ব্যর্থ", `কোনো সংখ্যা খুঁজে পাওয়া যায়নি: "${finalVal}"`, "error");
+            }
+          } else if (fieldName === 'notes') {
+            setNotes(prev => prev ? `${prev} | ${finalVal}` : finalVal);
+            showNotification("নোট যুক্ত করা হয়েছে", finalVal, "success");
+          }
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Speech engine error code:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showNotification(
+            "ডিকটেশন রেকর্ড সাময়িকভাবে বাধাগ্রস্ত হয়েছে", 
+            `মাইক পারমিশন দিন। ত্রুটি: ${event.error}`, 
+            "error"
+          );
+        }
+        setActiveDictationField(null);
+      };
+
+      rec.onend = () => {
+        setActiveDictationField(null);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Critical voice api error:", err);
+      setActiveDictationField(null);
+    }
+  };
+
+  const captureGpsLocation = () => {
+    if (!navigator.geolocation) {
+      setGpsError("আপনার ব্রাউজারে জিপিএস সুবিধা সমর্থিত নয় (Geolocation not supported).");
+      showNotification("জিপিএস ত্রুটি", "আপনার ব্রাউজার বা ডিভাইসে জিপিএস লোকেশন রিড করা অবরুদ্ধ।", "error");
+      return;
+    }
+
+    setGpsLoading(true);
+    setGpsError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp
+        });
+        setGpsLoading(false);
+        showNotification(
+          "জিপিএস লোকেশন কো-অর্ডিনেট সংগৃহীত",
+          `অর্ডার লোকেশন সফলভাবে ট্র্যাকড (নির্ভুলতা: ±${position.coords.accuracy.toFixed(1)}m)`,
+          "success",
+          4000
+        );
+      },
+      (error) => {
+        console.warn("GPS tracking error:", error);
+        setGpsLoading(false);
+        let msg = "লোকেশন ক্যাচ করা সম্ভব হয়নি।";
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = "জিপিএস ব্যবহারের অনুমতি দেওয়া হয়নি। অনুগ্রহ করে ব্রাউজার সেটিংস থেকে লোকেশন পারমিশন সচল করুন।";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          msg = "ডিভাইসের জিপিএস সংকেত পাওয়া যায়নি। অনুগ্রহ করে ঘরের বাইরে ট্রাই করুণ।";
+        } else if (error.code === error.TIMEOUT) {
+          msg = "লোকেশন ট্র্যাক করতে সময়সীমা অতিক্রম হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।";
+        }
+        setGpsError(msg);
+        showNotification("লোকেশন ইরর", msg, "error", 6000);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  };
+
   // Statuses
   const [existingCustomerMatched, setExistingCustomerMatched] = useState<Customer | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleScanSuccess = (data: {
+    phone?: string;
+    name?: string;
+    address?: string;
+    amount?: number;
+    notes?: string;
+    rawText: string;
+  }) => {
+    if (data.phone) {
+      setPhone(data.phone.trim());
+    }
+    if (data.name) {
+      setName(data.name.trim());
+    }
+    if (data.address) {
+      setAddress(data.address.trim());
+    }
+    if (data.amount !== undefined) {
+      handleAmountChange(String(data.amount));
+    }
+    if (data.notes) {
+      setNotes(prev => {
+        const addition = data.notes?.trim() || '';
+        if (!prev) return addition;
+        if (prev.includes(addition)) return prev;
+        return `${prev} | ${addition}`;
+      });
+    }
+  };
 
   // Load configuration and existing customer phone numbers
   useEffect(() => {
@@ -108,6 +338,11 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
 
     setLoading(true);
 
+    let gpsLocationStr = '';
+    if (gpsCoords) {
+      gpsLocationStr = `Lat: ${gpsCoords.latitude.toFixed(6)}, Lon: ${gpsCoords.longitude.toFixed(6)}, Acc: ${gpsCoords.accuracy.toFixed(1)}m`;
+    }
+
     try {
       await dbService.addOrder(
         {
@@ -120,11 +355,19 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
           delivery_cost: deliveryCostVal,
           other_costs: otherCostsVal,
           notes: notes.trim() || undefined,
+          gps_location: gpsLocationStr || undefined,
         },
         user.id
       );
 
       setSubmitSuccess(true);
+      if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+        try {
+          window.navigator.vibrate([100, 50, 100]); // Snappy double haptic pulse to confirm successful submission
+        } catch (e) {
+          console.warn("Vibration feedback not supported or blocked by user preference:", e);
+        }
+      }
       showNotification("Success", "অর্ডারটি সফলভাবে ডাটাবেজে অন্তর্ভুক্ত করা হয়েছে!", "success");
       
       // Clear form inputs
@@ -136,6 +379,8 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
       setDeliveryCostStr(costDefaults ? String(costDefaults.default_delivery_cost) : '');
       setOtherCostsStr(costDefaults ? String(costDefaults.other_fixed_cost) : '');
       setNotes('');
+      setGpsCoords(null);
+      setGpsError(null);
       setExistingCustomerMatched(null);
 
       // Refresh customers register for subsequent inserts
@@ -213,9 +458,59 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
         
         {/* Customer Profile Section */}
         <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-4 flex items-center gap-1">
-            <Smartphone className="w-4 h-4" /> 1. Customer Information
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+              <Smartphone className="w-4 h-4" /> 1. Customer Information
+            </h3>
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/40 rounded-xl text-xs font-bold transition-all duration-200 shadow-3xs active:scale-98 cursor-pointer"
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>পণ্য বারকোড/কিউআর স্ক্যান করুন (Scan Code)</span>
+            </button>
+          </div>
+
+          {/* Voice Configuration Panel */}
+          {speechSupported && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-emerald-50/40 border border-emerald-100/60 rounded-xl px-4 py-2.5 mb-5 text-xs gap-3">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                <span className="flex h-2 w-2 relative shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>ভয়েস ডিকটেশন সচল (Hands-free Voice Input Active)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[11px] font-medium">ইনপুট ভাষা (Mic Lang):</span>
+                <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-3xs">
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('bn-BD')}
+                    className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                      speechLang === 'bn-BD' 
+                        ? 'bg-emerald-600 text-white shadow-3xs' 
+                        : 'text-slate-605 text-slate-600 hover:text-slate-900 bg-transparent'
+                    }`}
+                  >
+                    বাংলা (Bangla)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('en-US')}
+                    className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                      speechLang === 'en-US' 
+                        ? 'bg-emerald-600 text-white shadow-3xs' 
+                        : 'text-slate-605 text-slate-600 hover:text-slate-900 bg-transparent'
+                    }`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Phone */}
@@ -224,14 +519,34 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
                 <Phone className="w-3.5 h-3.5 text-slate-400" />
                 Phone Number <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g., 01931355398"
-                className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm font-sans"
-                required
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g., 01931355398"
+                  className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm font-sans"
+                  required
+                />
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSpeechRecognition('phone')}
+                    className={`px-3 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                      activeDictationField === 'phone'
+                        ? 'bg-rose-500 border-rose-550 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                    }`}
+                    title="Speak Phone Number"
+                  >
+                    {activeDictationField === 'phone' ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                )}
+              </div>
               {existingCustomerMatched ? (
                 <p className="mt-1.5 text-xs text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
                   ✓ Existing profile found: customer account will link.
@@ -251,15 +566,35 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
                 <User className="w-3.5 h-3.5 text-slate-400" />
                 Customer Name <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Anisur Rahman"
-                disabled={!!existingCustomerMatched}
-                className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg disabled:opacity-60 disabled:bg-slate-50 text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm"
-                required
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Anisur Rahman"
+                  disabled={!!existingCustomerMatched}
+                  className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg disabled:opacity-60 disabled:bg-slate-50 text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm w-full"
+                  required
+                />
+                {speechSupported && !existingCustomerMatched && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSpeechRecognition('name')}
+                    className={`px-3 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                      activeDictationField === 'name'
+                        ? 'bg-rose-500 border-rose-550 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                    }`}
+                    title="Speak Customer Name"
+                  >
+                    {activeDictationField === 'name' ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                )}
+              </div>
               {existingCustomerMatched && (
                 <p className="mt-1 text-[11px] text-slate-400">
                   Name locked because phone matched an existing profile. To edit, visit the Customer directory.
@@ -273,14 +608,108 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                 Delivery Address
               </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                disabled={!!existingCustomerMatched}
-                placeholder="e.g., Satkhira, Khulna Road, Bangladesh"
-                className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg disabled:opacity-60 disabled:bg-slate-50 text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm"
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  disabled={!!existingCustomerMatched}
+                  placeholder="e.g., Satkhira, Khulna Road, Bangladesh"
+                  className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg disabled:opacity-60 disabled:bg-slate-50 text-slate-808 text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm w-full"
+                />
+                {speechSupported && !existingCustomerMatched && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSpeechRecognition('address')}
+                    className={`px-3 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                      activeDictationField === 'address'
+                        ? 'bg-rose-500 border-rose-550 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                    }`}
+                    title="Speak Delivery Address"
+                  >
+                    {activeDictationField === 'address' ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* GPS Geolocation verification */}
+            <div className="md:col-span-2 bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-805 text-slate-800 flex items-center gap-1.5">
+                    <Navigation className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    traceability GPS ট্র্যাকিং (Order Location Verification)
+                  </label>
+                  <p className="text-[11px] text-slate-500 leading-normal max-w-md mt-0.5">
+                    সঠিক সরবরাহ পয়েন্ট ট্র্যাকিং এর জন্য এবং কৃষকের অর্ডারের সত্যতা নিশ্চিতকরণে অর্ডারটি নেওয়ার সময় জিপিএস জেনারেট করুন।
+                  </p>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={captureGpsLocation}
+                  disabled={gpsLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 min-w-[140px] justify-center cursor-pointer select-none active:scale-98 ${
+                    gpsCoords 
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-250' 
+                      : 'bg-emerald-600 hover:bg-emerald-550 hover:bg-emerald-500 text-white shadow-xs'
+                  }`}
+                >
+                  {gpsLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                      <span>লোডিং...</span>
+                    </>
+                  ) : gpsCoords ? (
+                    <>
+                      <Locate className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>রিলোকেট (Recapture)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Compass className="w-3.5 h-3.5 text-emerald-100" />
+                      <span>জিপিএস ট্র্যাক করুন</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {gpsError && (
+                <p className="text-[10px] text-rose-700 bg-rose-50 px-2.5 py-2 rounded-lg border border-rose-100/50 flex items-start gap-1 justify-start">
+                  ⚠️ <span>{gpsError}</span>
+                </p>
+              )}
+
+              {gpsCoords && (
+                <div className="bg-white border border-emerald-200/50 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-3xs">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full border border-emerald-100 bg-emerald-50 flex items-center justify-center shrink-0">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <div className="text-left leading-normal">
+                      <span className="block text-[9px] uppercase font-bold text-emerald-800 tracking-wider font-mono">Location Logged Successfully</span>
+                      <div className="flex flex-wrap gap-x-3.5 gap-y-0.5 text-xs font-mono font-medium text-slate-700 mt-0.5">
+                        <span>Lat: <strong>{gpsCoords.latitude.toFixed(6)}</strong></span>
+                        <span>Lon: <strong>{gpsCoords.longitude.toFixed(6)}</strong></span>
+                        <span>Accuracy: <strong className="text-emerald-700">±{gpsCoords.accuracy.toFixed(1)}m</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setGpsCoords(null); setGpsError(null); }}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline font-bold sm:px-2 py-1 cursor-pointer select-none"
+                  >
+                    মুছে ফেলুন (Clear)
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -312,14 +741,34 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                 Order Amount (BDT) <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="number"
-                value={amountStr}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                placeholder="e.g., 2500"
-                className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm font-mono"
-                required
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="number"
+                  value={amountStr}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  placeholder="e.g., 2500"
+                  className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm font-mono"
+                  required
+                />
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSpeechRecognition('amount')}
+                    className={`px-3 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                      activeDictationField === 'amount'
+                        ? 'bg-rose-500 border-rose-550 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                    }`}
+                    title="Speak Amount"
+                  >
+                    {activeDictationField === 'amount' ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Product Cost */}
@@ -377,13 +826,33 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
                 <FileText className="w-3.5 h-3.5 text-slate-400" />
                 Operator Notes (ঐচ্ছিক মন্তব্য)
               </label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g., Farmer paid instantly, quality checked"
-                className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm"
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g., Farmer paid instantly, quality checked"
+                  className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm w-full"
+                />
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSpeechRecognition('notes')}
+                    className={`px-3 border rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                      activeDictationField === 'notes'
+                        ? 'bg-rose-500 border-rose-550 text-white animate-pulse'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                    }`}
+                    title="Speak Notes"
+                  >
+                    {activeDictationField === 'notes' ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -427,6 +896,13 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
           </button>
         </div>
       </form>
+
+      {/* Barcode/QR Code Multi-format Scanner Modal */}
+      <BarcodeScannerModal 
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+      />
     </div>
   );
 }

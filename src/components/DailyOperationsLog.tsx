@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
 import { dbService } from '../db';
 import { DailyLog, Profile } from '../types';
 import { useNotification } from './NotificationContext';
@@ -20,7 +20,9 @@ import {
   Truck, 
   HelpCircle, 
   ArrowRight,
-  Filter
+  Filter,
+  Mic,
+  MicOff
 } from 'lucide-react';
 
 interface DailyOperationsLogProps {
@@ -51,6 +53,120 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
   const [editDescription, setEditDescription] = useState('');
   const [editResolved, setEditResolved] = useState(false);
   const [editResolutionNotes, setEditResolutionNotes] = useState('');
+
+  // Web Speech API integration states
+  const [activeDictationField, setActiveDictationField] = useState<string | null>(null);
+  const [speechLang, setSpeechLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+    }
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Silent catch
+        }
+      }
+    };
+  }, []);
+
+  const toggleSpeechRecognition = (fieldName: 'description' | 'resolutionNotes' | 'editDescription' | 'editResolutionNotes') => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotification(
+        "ভয়েস অসমর্থিত", 
+        "আপনার ব্রাউজার বা ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে গুগল ক্রোম ব্রাউজার ব্যবহার করুন।", 
+        "error"
+      );
+      return;
+    }
+
+    if (activeDictationField === fieldName) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+      setActiveDictationField(null);
+      return;
+    }
+
+    // Stop active dictations
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLang;
+
+      rec.onstart = () => {
+        setActiveDictationField(fieldName);
+        showNotification(
+          "ভয়েস রেকর্ড শুরু হয়েছে", 
+          speechLang === 'bn-BD' ? "অনুগ্রহ করে কথা বলুন..." : "Speak now...", 
+          "info",
+          2000
+        );
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const finalVal = transcript.trim();
+          if (fieldName === 'description') {
+            setDescription(prev => prev ? `${prev} ${finalVal}` : finalVal);
+            showNotification("প্রাপ্ত তথ্য যুক্ত করা হয়েছে", finalVal, "success");
+          } else if (fieldName === 'resolutionNotes') {
+            setResolutionNotes(prev => prev ? `${prev} ${finalVal}` : finalVal);
+            showNotification("প্রাপ্ত তথ্য যুক্ত করা হয়েছে", finalVal, "success");
+          } else if (fieldName === 'editDescription') {
+            setEditDescription(prev => prev ? `${prev} ${finalVal}` : finalVal);
+            showNotification("প্রাপ্ত তথ্য যুক্ত করা হয়েছে", finalVal, "success");
+          } else if (fieldName === 'editResolutionNotes') {
+            setEditResolutionNotes(prev => prev ? `${prev} ${finalVal}` : finalVal);
+            showNotification("প্রাপ্ত তথ্য যুক্ত করা হয়েছে", finalVal, "success");
+          }
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Speech engine error code:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showNotification(
+            "ডিকটেশন রেকর্ড সাময়িকভাবে বাধাগ্রস্ত হয়েছে", 
+            `মাইক পারমিশন দিন। ত্রুটি: ${event.error}`, 
+            "error"
+          );
+        }
+        setActiveDictationField(null);
+      };
+
+      rec.onend = () => {
+        setActiveDictationField(null);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Critical voice api error:", err);
+      setActiveDictationField(null);
+    }
+  };
 
   // Subscribe to real-time operations log data
   useEffect(() => {
@@ -561,6 +677,46 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
             {/* Modal Scrollable Form */}
             <form onSubmit={handleAddLog} className="p-5 space-y-4 overflow-y-auto flex-1">
               
+              {/* Voice Configuration Panel */}
+              {speechSupported && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-emerald-50/40 border border-emerald-100/60 rounded-xl px-4 py-2.5 text-xs gap-3 select-none">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <span className="flex h-2 w-2 relative shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>ভয়েস ডিকটেশন সচল (Voice Input Active)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 text-[11px] font-medium">ভাষা (Lang):</span>
+                    <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-3xs">
+                      <button
+                        type="button"
+                        onClick={() => setSpeechLang('bn-BD')}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                          speechLang === 'bn-BD' 
+                            ? 'bg-emerald-600 text-white shadow-3xs' 
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
+                      >
+                        বাংলা
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpeechLang('en-US')}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                          speechLang === 'en-US' 
+                            ? 'bg-emerald-600 text-white shadow-3xs' 
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
+                      >
+                        English
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
                 {/* Event Date Input */}
@@ -602,21 +758,41 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
-                    বিস্তারিত বিবরণ (Description)
+                    বিস্তারিত বিবরণ (Description) <span className="text-rose-500">*</span>
                   </label>
                   <span className="text-[9px] font-mono text-bento-muted">
                     {description.length}/2000 chars
                   </span>
                 </div>
-                <textarea
-                  required
-                  rows={4}
-                  maxLength={2000}
-                  placeholder="এখানে ইভেন্টের চমৎকার বিবরণটি লিখুন (যেমন: দুপুর ১২টায় ফিল্ড মোটর জেনারেটরের মবিল পরিবর্তন ও ফিল্টার ক্লিন করা হয়েছে)..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium placeholder-slate-400"
-                ></textarea>
+                <div className="flex gap-1.5">
+                  <textarea
+                    required
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="এখানে ইভেন্টের চমৎকার বিবরণটি লিখুন (যেমন: দুপুর ১২টায় ফিল্ড মোটর জেনারেটরের মবিল পরিবর্তন ও ফিল্টার ক্লিন করা হয়েছে)..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium placeholder-slate-400 flex-1"
+                  ></textarea>
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSpeechRecognition('description')}
+                      className={`px-3 border rounded-bento transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                        activeDictationField === 'description'
+                          ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                      }`}
+                      title="Speak Description"
+                    >
+                      {activeDictationField === 'description' ? (
+                        <MicOff className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Mic className="w-5 h-5 text-emerald-600" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Resolved Toggle Switch box */}
@@ -645,15 +821,35 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
                   <label className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
                     সমাধানের বিস্তারিত বিবরণ (Resolution Action Notes)
                   </label>
-                  <textarea
-                    required
-                    rows={2}
-                    maxLength={2000}
-                    placeholder="কিভাবে সমাধান করা হলো বা বর্তমান সমাধান স্থিতি লিখুন..."
-                    value={resolutionNotes}
-                    onChange={(e) => setResolutionNotes(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium"
-                  ></textarea>
+                  <div className="flex gap-1.5">
+                    <textarea
+                      required
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="কিভাবে সমাধান করা হলো বা বর্তমান সমাধান স্থিতি লিখুন..."
+                      value={resolutionNotes}
+                      onChange={(e) => setResolutionNotes(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium flex-1"
+                    ></textarea>
+                    {speechSupported && (
+                      <button
+                        type="button"
+                        onClick={() => toggleSpeechRecognition('resolutionNotes')}
+                        className={`px-3 border rounded-bento transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                          activeDictationField === 'resolutionNotes'
+                            ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                            : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                        }`}
+                        title="Speak Resolution Details"
+                      >
+                        {activeDictationField === 'resolutionNotes' ? (
+                          <MicOff className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Mic className="w-5 h-5 text-emerald-600" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -710,6 +906,46 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
             {/* Form */}
             <form onSubmit={handleUpdateLog} className="p-5 space-y-4 overflow-y-auto flex-1">
               
+              {/* Voice Configuration Panel */}
+              {speechSupported && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-emerald-50/40 border border-emerald-100/60 rounded-xl px-4 py-2.5 text-xs gap-3 select-none">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <span className="flex h-2 w-2 relative shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>ভয়েস ডিকটেশন সচল (Voice Input Active)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 text-[11px] font-medium">ভাষা (Lang):</span>
+                    <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-3xs">
+                      <button
+                        type="button"
+                        onClick={() => setSpeechLang('bn-BD')}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                          speechLang === 'bn-BD' 
+                            ? 'bg-emerald-600 text-white shadow-3xs' 
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
+                      >
+                        বাংলা
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpeechLang('en-US')}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
+                          speechLang === 'en-US' 
+                            ? 'bg-emerald-600 text-white shadow-3xs' 
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
+                      >
+                        English
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Static Fields Display for context */}
               <div className="grid grid-cols-2 gap-4 p-3.5 bg-bento-bg rounded-bento border border-bento-border/70 select-none">
                 <div>
@@ -727,15 +963,35 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
                 <label className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
                   লগের মূল বিবরণ (Description)
                 </label>
-                <textarea
-                  required
-                  rows={4}
-                  maxLength={2000}
-                  placeholder="বিবরণ লিখুন..."
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium"
-                ></textarea>
+                <div className="flex gap-1.5">
+                  <textarea
+                    required
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="বিবরণ লিখুন..."
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium flex-1"
+                  ></textarea>
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSpeechRecognition('editDescription')}
+                      className={`px-3 border rounded-bento transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                        activeDictationField === 'editDescription'
+                          ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                      }`}
+                      title="Speak Description"
+                    >
+                      {activeDictationField === 'editDescription' ? (
+                        <MicOff className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Mic className="w-5 h-5 text-emerald-600" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Edit Resolved Toggle */}
@@ -764,15 +1020,35 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
                   <label className="text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
                     সমাধানের বিস্তারিত বিবরণ (Resolution Action Notes)
                   </label>
-                  <textarea
-                    required
-                    rows={2.5}
-                    maxLength={2000}
-                    placeholder="কিভাবে সমাধান বা সম্পন্ন করা হলো লিখুন..."
-                    value={editResolutionNotes}
-                    onChange={(e) => setEditResolutionNotes(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium"
-                  ></textarea>
+                  <div className="flex gap-1.5">
+                    <textarea
+                      required
+                      rows={2.5}
+                      maxLength={2000}
+                      placeholder="কিভাবে সমাধান বা সম্পন্ন করা হলো লিখুন..."
+                      value={editResolutionNotes}
+                      onChange={(e) => setEditResolutionNotes(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-bento-bg text-slate-700 rounded-bento border border-bento-border focus:outline-none focus:ring-1 focus:ring-bento-primary focus:bg-white font-medium flex-1"
+                    ></textarea>
+                    {speechSupported && (
+                      <button
+                        type="button"
+                        onClick={() => toggleSpeechRecognition('editResolutionNotes')}
+                        className={`px-3 border rounded-bento transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                          activeDictationField === 'editResolutionNotes'
+                            ? 'bg-rose-500 border-rose-600 text-white animate-pulse'
+                            : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                        }`}
+                        title="Speak Resolution Details"
+                      >
+                        {activeDictationField === 'editResolutionNotes' ? (
+                          <MicOff className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Mic className="w-5 h-5 text-emerald-600" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, FormEvent, ChangeEvent, useMemo } from 'react';
 import { dbService } from '../db';
+import { safeStorage } from '../utils/storage';
 import { ChatMessage, Profile, ChatGroup } from '../types';
 import { useNotification } from './NotificationContext';
 import { playIncomingTone, playOutgoingTone } from '../utils/audio';
@@ -262,13 +263,13 @@ export default function LiveChat() {
 
   // Night Mode state specifically for LiveChat to reduce eye strain
   const [isNightMode, setIsNightMode] = useState<boolean>(() => {
-    return localStorage.getItem('operator_chat_night_mode') === 'true';
+    return safeStorage.getItem('operator_chat_night_mode') === 'true';
   });
 
   const toggleNightMode = () => {
     setIsNightMode(prev => {
       const newVal = !prev;
-      localStorage.setItem('operator_chat_night_mode', String(newVal));
+      safeStorage.setItem('operator_chat_night_mode', String(newVal));
       return newVal;
     });
   };

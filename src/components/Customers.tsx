@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
 import { dbService, isSupabaseConfigured, supabase } from '../db';
 import { Customer, Order, Profile } from '../types';
 import { useNotification } from './NotificationContext';
@@ -18,7 +18,10 @@ import {
   Info, 
   User, 
   RefreshCw,
-  FileText
+  FileText,
+  Navigation,
+  Mic,
+  MicOff
 } from 'lucide-react';
 
 interface CustomersProps {
@@ -31,6 +34,104 @@ export default function Customers({ user }: CustomersProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Web Speech API integration states
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechLang, setSpeechLang] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [isDictating, setIsDictating] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+    }
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Silent catch
+        }
+      }
+    };
+  }, []);
+
+  const toggleSpeech = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotification(
+        "ভয়েস অসমর্থিত", 
+        "আপনার ব্রাউজার বা ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে গুগল ক্রোম ব্রাউজার ব্যবহার করুন।", 
+        "error"
+      );
+      return;
+    }
+
+    if (isDictating) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+      setIsDictating(false);
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLang;
+
+      rec.onstart = () => {
+        setIsDictating(true);
+        showNotification(
+          "ভয়েস সন্ধান শুরু হয়েছে", 
+          speechLang === 'bn-BD' ? "গ্রাহকের নাম বা ঠিকানাটি বলুন..." : "Speak customer name or address...", 
+          "info",
+          2500
+        );
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const query = transcript.trim().replace(/[।.]/g, ''); // Clear punctuation
+          setSearchQuery(query);
+          showNotification(
+            "অনুসন্ধান করা হচ্ছে", 
+            `"${query}" এর জন্য সন্ধান করা হচ্ছে`, 
+            "success"
+          );
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Search dictate error:", event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showNotification(
+            "ডিকটেশন রেকর্ড সাময়িকভাবে বাধাগ্রস্ত হয়েছে", 
+            `মাইক পারমিশন দিন। ত্রুটি: ${event.error}`, 
+            "error"
+          );
+        }
+        setIsDictating(false);
+      };
+
+      rec.onend = () => {
+        setIsDictating(false);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Voice search engine load failure:", err);
+      setIsDictating(false);
+    }
+  };
 
   // Modal / Drawer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -281,17 +382,65 @@ export default function Customers({ user }: CustomersProps) {
       </div>
 
       {/* Search Input */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-          <Search className="w-5 h-5" />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <Search className="w-5 h-5" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by customer name, phone number, address..."
+            className="block w-full pl-10 pr-12 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm"
+          />
+          {speechSupported && (
+            <button
+              type="button"
+              onClick={toggleSpeech}
+              className={`absolute right-2 top-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                isDictating
+                  ? 'bg-rose-500 text-white animate-pulse'
+                  : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-50'
+              }`}
+              title={isDictating ? "Stop Voice Search" : "Voice Search (ভয়েস সার্চ)"}
+            >
+              {isDictating ? (
+                <MicOff className="w-4.5 h-4.5" />
+              ) : (
+                <Mic className="w-4.5 h-4.5" />
+              )}
+            </button>
+          )}
         </div>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by customer name, phone number, address..."
-          className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1.5 focus:ring-emerald-500 text-sm"
-        />
+        
+        {speechSupported && (
+          <div className="flex items-center gap-1.5 self-start sm:self-center bg-slate-50 border border-slate-200 p-1 rounded-xl text-xs shrink-0 shadow-3xs select-none">
+            <span className="text-slate-500 px-1 text-[11px] font-medium font-mono">LANG:</span>
+            <button
+              type="button"
+              onClick={() => setSpeechLang('bn-BD')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                speechLang === 'bn-BD'
+                  ? 'bg-emerald-600 text-white shadow-3xs'
+                  : 'text-slate-600 hover:text-slate-900 bg-transparent'
+              }`}
+            >
+              বাংলা (BN)
+            </button>
+            <button
+              type="button"
+              onClick={() => setSpeechLang('en-US')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                speechLang === 'en-US'
+                  ? 'bg-emerald-600 text-white shadow-3xs'
+                  : 'text-slate-600 hover:text-slate-900 bg-transparent'
+              }`}
+            >
+              ENG (US)
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -474,6 +623,12 @@ export default function Customers({ user }: CustomersProps) {
                           {ord.notes && (
                             <div className="text-[11px] text-slate-500 italic font-sans">
                               "{ord.notes}"
+                            </div>
+                          )}
+                          {ord.gps_location && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-lg font-sans w-fit border border-emerald-100/60 max-w-[240px] truncate" title={ord.gps_location}>
+                              <Navigation className="w-2.5 h-2.5 text-emerald-600 animate-pulse shrink-0" />
+                              <span className="truncate">GPS: {ord.gps_location}</span>
                             </div>
                           )}
                         </div>
