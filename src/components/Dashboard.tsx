@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, FormEvent } from 'react';
 import { dbService } from '../db';
 import { DailyStat, Profile, Order, Expense, DailyLog } from '../types';
 import { useNotification } from './NotificationContext';
+import { isAdmin as isUserAdmin } from '../utils/auth';
 import AddToHomeScreenCTA from './AddToHomeScreenCTA';
 import { 
   BarChart, 
@@ -43,6 +44,7 @@ interface DashboardProps {
 
 export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: DashboardProps) {
   const { showError, showNotification } = useNotification();
+  const isAdmin = isUserAdmin(user);
   const [loading, setLoading] = useState(true);
   const [operatorsList, setOperatorsList] = useState<Profile[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -268,7 +270,7 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
 
   useEffect(() => {
     let unsubscribeOps = () => {};
-    if (user.role === 'admin') {
+    if (isAdmin) {
       unsubscribeOps = dbService.subscribeOperators(
         (ops) => {
           setOperatorsList(ops);
@@ -685,8 +687,8 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
               </button>
 
               <button
-                onClick={() => onNavigate(user.role === 'admin' ? 'operators' : 'dashboard')}
-                disabled={user.role !== 'admin'}
+                onClick={() => onNavigate(isAdmin ? 'operators' : 'dashboard')}
+                disabled={!isAdmin}
                 className="flex flex-col items-center gap-2 p-4 rounded-bento border border-dashed border-bento-border bg-bento-bg hover:bg-bento-primary-light/5 hover:border-bento-primary-light disabled:opacity-45 disabled:pointer-events-none transition-all duration-200 text-bento-primary cursor-pointer relative"
               >
                 {pendingOperatorsCount > 0 && (
@@ -699,8 +701,8 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
               </button>
 
               <button
-                onClick={() => onNavigate(user.role === 'admin' ? 'cost_settings' : 'dashboard')}
-                disabled={user.role !== 'admin'}
+                onClick={() => onNavigate(isAdmin ? 'cost_settings' : 'dashboard')}
+                disabled={!isAdmin}
                 className="flex flex-col items-center gap-2 p-4 rounded-bento border border-dashed border-bento-border bg-bento-bg hover:bg-bento-primary-light/5 hover:border-bento-primary-light disabled:opacity-45 disabled:pointer-events-none transition-all duration-200 text-bento-primary cursor-pointer"
               >
                 <Sliders className="w-5 h-5 text-bento-accent" />
@@ -1089,7 +1091,7 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
         </div>
       </div>
 
-      {user.role === 'admin' && (
+      {isAdmin && (
         <div className="bg-bento-card p-5 rounded-bento border border-bento-border shadow-bento font-sans mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-bento-border pb-3">
             <div>

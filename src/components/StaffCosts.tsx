@@ -3,6 +3,7 @@ import { dbService } from '../db';
 import { Staff, StaffPayment, Expense, Profile } from '../types';
 import { useNotification } from './NotificationContext';
 import { canDelete } from '../utils/auth';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { 
   Users, 
   DollarSign, 
@@ -31,6 +32,20 @@ interface StaffCostsProps {
 export default function StaffCosts({ user }: StaffCostsProps) {
   const { showError, showNotification } = useNotification();
   const isAdmin = canDelete(user);
+
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    itemName: string;
+  }>({
+    onConfirm: () => {},
+    title: '',
+    message: '',
+    itemName: ''
+  });
 
   // State lists
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -221,18 +236,26 @@ export default function StaffCosts({ user }: StaffCostsProps) {
   };
 
   // Click delete handler for staff
-  const handleDeleteStaff = async (id: string, name: string) => {
+  const handleDeleteStaff = (id: string, name: string) => {
     if (!isAdmin) {
       triggerError("অনুমতি নেই: দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন।");
       return;
     }
-    if (!confirm(`আপনি কি নিশ্চিতভাবে কর্মচারী "${name}" কে তালিকা থেকে মুছে ফেলতে চান?`)) return;
-    try {
-      await dbService.deleteStaff(id);
-      triggerSuccess(`কর্মচারী "${name}" এর সকল রেকর্ড সফলভাবে মুছে ফেলা হয়েছে।`);
-    } catch (err: any) {
-      triggerError("ডিলেট ব্যর্থ হয়েছে: " + err.message, err);
-    }
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteStaff(id);
+          triggerSuccess(`কর্মচারী "${name}" এর সকল রেকর্ড সফলভাবে মুছে ফেলা হয়েছে।`);
+        } catch (err: any) {
+          triggerError("ডিলেট ব্যর্থ হয়েছে: " + err.message, err);
+        }
+      },
+      title: "কর্মচারী প্রোফাইল মুছে ফেলা (Delete Staff Profile)",
+      message: `আপনি কি নিশ্চিতভাবে কর্মচারী "${name}" কে তালিকা থেকে মুছে ফেলতে চান? এই কর্মটি অপরিবর্তনযোগ্য।`,
+      itemName: `${name} (ID: ${id})`
+    });
+    setDeleteModalOpen(true);
   };
 
   // Salary payout checkout handler (Admin-only payout trigger)
@@ -307,18 +330,28 @@ export default function StaffCosts({ user }: StaffCostsProps) {
   };
 
   // Delete expense item
-  const handleDeleteExpense = async (id: string, detail: string) => {
+  const handleDeleteExpense = (id: string, detail: string) => {
     if (!isAdmin) {
       triggerError("অনুমতি নেই: দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন।");
       return;
     }
-    if (!confirm(`আপনি কি এই খরচের রেকর্ডটি মুছে ফেলতে চান?\nবিবরণ: ${detail}`)) return;
-    try {
-      await dbService.deleteExpense(id);
-      triggerSuccess("খরচের রেকর্ডটি সফলভাবে ডাটাবেজ থেকে মুছে ফেলা হয়েছে।");
-    } catch (e: any) {
-      triggerError("মুছে ফেলা অসমাপ্ত ছিল: " + e.message, e);
-    }
+
+    const currentExp = expensesList.find(e => e.id === id);
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteExpense(id);
+          triggerSuccess("খরচের রেকর্ডটি সফলভাবে ডাটাবেজ থেকে মুছে ফেলা হয়েছে।");
+        } catch (e: any) {
+          triggerError("মুছে ফেলা অসমাপ্ত ছিল: " + e.message, e);
+        }
+      },
+      title: "খরচ রেকর্ড মুছে ফেলা (Delete Expense Record)",
+      message: "আপনি কি সত্যিই এই খরচের রেকর্ডটি মুছে ফেলতে চান? এটি রিভার্স করা যাবে না।",
+      itemName: currentExp ? `Type: ${currentExp.expense_type} - Detail: ${detail} - Amount: ৳${currentExp.amount}` : detail
+    });
+    setDeleteModalOpen(true);
   };
 
   // Calculate filtered lists
@@ -1140,6 +1173,14 @@ export default function StaffCosts({ user }: StaffCostsProps) {
         </div>
       )}
 
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={deleteModalConfig.onConfirm}
+        title={deleteModalConfig.title}
+        message={deleteModalConfig.message}
+        itemName={deleteModalConfig.itemName}
+      />
     </div>
   );
 }

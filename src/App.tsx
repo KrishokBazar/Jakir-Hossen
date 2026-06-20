@@ -19,6 +19,7 @@ import AppVersionChecker from './components/AppVersionChecker';
 import NetworkStatusNotifier from './components/NetworkStatusNotifier';
 import OfflineDashboard from './components/OfflineDashboard';
 import { getOfflineMutations } from './utils/offlineSync';
+import { isAdmin as isUserAdmin } from './utils/auth';
 
 import { 
   Leaf, 
@@ -142,7 +143,7 @@ export default function App() {
     }
     
     // Check pending operators if admin in the background
-    if (user && user.role === 'admin') {
+    if (user && isUserAdmin(user)) {
       const fetchCount = async () => {
         try {
           const ops = await dbService.getOperators();
@@ -216,7 +217,7 @@ export default function App() {
     } else {
       setCurrentTab('dashboard');
     }
-    if (user && user.role === 'admin') {
+    if (user && isUserAdmin(user)) {
       // Fetch operators list to evaluate counts
       dbService.getOperators().then((ops) => {
         const count = ops.filter((op) => !op.approved && op.role === 'operator').length;
@@ -238,7 +239,7 @@ export default function App() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = isUserAdmin(currentUser);
   const isCofounder = currentUser.role === 'cofounder';
 
   // Navigation Links Definition

@@ -412,7 +412,13 @@ export const dbService = {
 
   async approveOperator(id: string): Promise<void> {
     const currentUser = dbService.getCurrentUser();
-    if (!currentUser || currentUser.role !== 'admin') {
+    const isUserAdmin = currentUser && (
+      currentUser.role === 'admin' ||
+      currentUser.email?.toLowerCase().trim() === 'ajzakir004@gmail.com' ||
+      currentUser.email?.toLowerCase().trim() === 'riktazhossain@gmail.com' ||
+      currentUser.phone === '01931355398'
+    );
+    if (!isUserAdmin) {
       throw new Error("অনুমতি নেই: শুধুমাত্র অ্যাডমিন অপারেটর অনুমোদন করতে পারবেন (Unauthorized: Only admin can approve operators).");
     }
     try {
@@ -429,7 +435,13 @@ export const dbService = {
 
   async rejectOperator(id: string): Promise<void> {
     const currentUser = dbService.getCurrentUser();
-    if (!currentUser || currentUser.role !== 'admin') {
+    const isUserAdmin = currentUser && (
+      currentUser.role === 'admin' ||
+      currentUser.email?.toLowerCase().trim() === 'ajzakir004@gmail.com' ||
+      currentUser.email?.toLowerCase().trim() === 'riktazhossain@gmail.com' ||
+      currentUser.phone === '01931355398'
+    );
+    if (!isUserAdmin) {
       throw new Error("অনুমতি নেই: শুধুমাত্র অ্যাডমিন অপারেটর প্রত্যাখ্যান করতে পারবেন (Unauthorized: Only admin can reject/delete operators).");
     }
     try {
@@ -1177,6 +1189,7 @@ export const dbService = {
           our_profit: Math.round((existingData.total_sales + (farmer.total_sales || 0)) * (farmer.commission_rate || existingData.commission_rate || 5) / 100),
           total_paid: existingData.total_paid + (farmer.total_paid || 0),
           payment_count: existingData.payment_count + (farmer.payment_count || 0),
+          photo_url: farmer.photo_url !== undefined ? farmer.photo_url : (existingData.photo_url || ''),
           updated_at: new Date().toISOString()
         });
       } else {

@@ -3,6 +3,7 @@ import { dbService } from '../db';
 import { Farmer, FarmerPayment, FarmerSale, Profile } from '../types';
 import { useNotification } from './NotificationContext';
 import { canDelete } from '../utils/auth';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { 
   Users, 
   Search, 
@@ -188,6 +189,20 @@ export default function Farmers({ user }: FarmersProps) {
   const [saleError, setSaleError] = useState<string | null>(null);
 
   const isAdmin = canDelete(user);
+
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    itemName: string;
+  }>({
+    onConfirm: () => {},
+    title: '',
+    message: '',
+    itemName: ''
+  });
 
   // Load / subscribe to all data
   useEffect(() => {
@@ -388,21 +403,27 @@ export default function Farmers({ user }: FarmersProps) {
     }
   };
 
-  const handleFarmerDelete = async (id: string, name: string) => {
+  const handleFarmerDelete = (id: string, name: string) => {
     if (!isAdmin) {
       showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন (Only admin can delete).", "warning");
       return;
     }
-    const confirmDel = window.confirm(`আপনি কি সত্যিই কৃষক "${name}" এবং তার সমস্ত তথ্য ডিলিট করতে চান? এটি রিভার্স করা যাবে না।`);
-    if (!confirmDel) return;
 
-    try {
-      await dbService.deleteFarmer(id);
-      setSelectedFarmer(null);
-      showNotification("সফল", "কৃষক প্রোফাইল ডিলিট করা হয়েছে।", "success");
-    } catch (err: any) {
-      showError("ডিলিট করতে সমস্যা হয়েছে", err);
-    }
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteFarmer(id);
+          setSelectedFarmer(null);
+          showNotification("সফল", "কৃষক প্রোফাইল ডিলিট করা হয়েছে।", "success");
+        } catch (err: any) {
+          showError("ডিলিট করতে সমস্যা হয়েছে", err);
+        }
+      },
+      title: "কৃষক প্রোফাইল ডিলিট নিশ্চিতকরণ (Confirm Farmer Profile Delete)",
+      message: `আপনি কি নিশ্চিত যে আপনি কৃষক "${name}" এবং তার সমস্ত তথ্য ডিলিট করতে চান? এই একশন রিভার্স করা যাবে না।`,
+      itemName: `${name} (ID: ${id})`
+    });
+    setDeleteModalOpen(true);
   };
 
   // Payout action
@@ -523,36 +544,52 @@ export default function Farmers({ user }: FarmersProps) {
     }
   };
 
-  const handleDeletePaymentLog = async (paymentId: string) => {
+  const handleDeletePaymentLog = (paymentId: string) => {
     if (!isAdmin) {
       showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন।", "warning");
       return;
     }
-    const confirmVal = window.confirm("আপনি কি সত্যিই এই পেমেন্ট রেকর্ডটি মুছে ফেলতে চান? এর ফলে কৃষকের পরিশোধিত হিসাব সমন্বয় করা হবে।");
-    if (!confirmVal) return;
 
-    try {
-      await dbService.deleteFarmerPayment(paymentId);
-      showNotification("সফল", "পেমেন্ট রেকর্ডটি সফলভাবে মুছে ফেলা হয়েছে।", "success");
-    } catch (err: any) {
-      showError("মুছে ফেলতে ত্রুটি", err);
-    }
+    const currentPay = payments.find(p => p.id === paymentId);
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteFarmerPayment(paymentId);
+          showNotification("সফল", "পেমেন্ট রেকর্ডটি সফলভাবে মুছে ফেলা হয়েছে।", "success");
+        } catch (err: any) {
+          showError("মুছে ফেলতে ত্রুটি", err);
+        }
+      },
+      title: "পেমেন্ট রেকর্ড মুছে ফেলা (Delete Payment Record)",
+      message: "আপনি কি সত্যিই এই পেমেন্ট রেকর্ডটি মুছে ফেলতে চান? এর ফলে কৃষকের পরিশোধিত হিসাব সমন্বয় করা হবে।",
+      itemName: currentPay ? `Payment of ৳${currentPay.amount} on ${new Date(currentPay.payment_date).toLocaleDateString()}` : paymentId
+    });
+    setDeleteModalOpen(true);
   };
 
-  const handleDeleteSaleLog = async (saleId: string) => {
+  const handleDeleteSaleLog = (saleId: string) => {
     if (!isAdmin) {
       showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন।", "warning");
       return;
     }
-    const confirmVal = window.confirm("আপনি কি সত্যিই এই বিক্রয় রেকর্ডটি মুছে ফেলতে চান? এর ফলে কৃষকের মোট বিক্রি হিসাব সমন্বয় করা হবে।");
-    if (!confirmVal) return;
 
-    try {
-      await dbService.deleteFarmerSale(saleId);
-      showNotification("সফল", "বিক্রয় রেকর্ডটি সফলভাবে মুছে ফেলা হয়েছে।", "success");
-    } catch (err: any) {
-      showError("মুছে ফেলতে ত্রুটি", err);
-    }
+    const currentSale = sales.find(s => s.id === saleId);
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteFarmerSale(saleId);
+          showNotification("সফল", "বিক্রয় রেকর্ডটি সফলভাবে মুছে ফেলা হয়েছে।", "success");
+        } catch (err: any) {
+          showError("মুছে ফেলতে ত্রুটি", err);
+        }
+      },
+      title: "বিক্রয় রেকর্ড মুছে ফেলা (Delete Sale Record)",
+      message: "আপনি কি সত্যিই এই বিক্রয় রেকর্ডটি মুছে ফেলতে চান? এর ফলে কৃষকের মোট বিক্রি হিসাব সমন্বয় করা হবে।",
+      itemName: currentSale ? `${currentSale.product_details} (Amount: ৳${currentSale.sale_amount})` : saleId
+    });
+    setDeleteModalOpen(true);
   };
 
   // Filter list by query
@@ -1132,7 +1169,7 @@ export default function Farmers({ user }: FarmersProps) {
               </div>
 
               {/* Actions row */}
-              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t">
+              <div className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} gap-2.5 pt-2 border-t`}>
                 <button
                   onClick={() => openEditFarmer(selectedFarmer)}
                   className={`py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 cursor-pointer ${
@@ -1144,21 +1181,18 @@ export default function Farmers({ user }: FarmersProps) {
                 >
                   <Edit3 className="w-3.5 h-3.5 text-slate-500" /> এডিট (Edit)
                 </button>
-                <button
-                  onClick={() => handleFarmerDelete(selectedFarmer.id, selectedFarmer.name)}
-                  className={`py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 cursor-pointer ${
-                    isAdmin 
-                    ? 'border-rose-100 hover:bg-rose-50 text-rose-600'
-                    : 'border-slate-100 text-slate-300 bg-slate-50/50 cursor-not-allowed'
-                  }`}
-                  disabled={!isAdmin}
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> ডিলিট করুন
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => handleFarmerDelete(selectedFarmer.id, selectedFarmer.name)}
+                    className="py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 cursor-pointer border-rose-100 hover:bg-rose-50 text-rose-600"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> ডিলিট করুন
+                  </button>
+                )}
 
                 <button
                   onClick={() => openAddSale(selectedFarmer)}
-                  className="py-2 text-xs font-extrabold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-lg flex items-center justify-center gap-1 cursor-pointer col-span-2 mt-1"
+                  className={`py-2 text-xs font-extrabold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-lg flex items-center justify-center gap-1 cursor-pointer mt-1 ${isAdmin ? 'col-span-2' : 'col-span-1'}`}
                 >
                   <Coins className="w-3.5 h-3.5" /> পণ্য বেচাকেনা করুন (Add Sales Log)
                 </button>
@@ -1791,6 +1825,14 @@ export default function Farmers({ user }: FarmersProps) {
         </div>
       )}
 
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={deleteModalConfig.onConfirm}
+        title={deleteModalConfig.title}
+        message={deleteModalConfig.message}
+        itemName={deleteModalConfig.itemName}
+      />
     </div>
   );
 }

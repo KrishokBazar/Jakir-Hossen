@@ -3,6 +3,7 @@ import { dbService, isSupabaseConfigured, supabase } from '../db';
 import { Customer, Order, Profile } from '../types';
 import { useNotification } from './NotificationContext';
 import { canDelete } from '../utils/auth';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { 
   Users, 
   Search, 
@@ -34,6 +35,20 @@ export default function Customers({ user }: CustomersProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    itemName: string;
+  }>({
+    onConfirm: () => {},
+    title: '',
+    message: '',
+    itemName: ''
+  });
 
   // Web Speech API integration states
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -276,25 +291,64 @@ export default function Customers({ user }: CustomersProps) {
     }
   };
 
-  const handleDeleteCustomer = async (id: string) => {
+  const handleDeleteCustomer = (id: string) => {
     if (!canDelete(user)) {
       showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন (Only admin can delete).", "warning");
       return;
     }
 
-    const isConfirmed = confirm(
-      "Are you sure you want to delete this customer? This will also remove ALL associated orders from the reports. Proceed only if this is a mistake."
-    );
-    if (!isConfirmed) return;
+    const currentCust = customers.find(c => c.id === id);
 
-    try {
-      await dbService.deleteCustomer(id);
-      setSelectedCustomer(null);
-      await loadData();
-      showNotification("Success", "Customer has been deleted successfully.", "success");
-    } catch (err: any) {
-      showError("Could not remove customer profile", err);
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteCustomer(id);
+          setSelectedCustomer(null);
+          await loadData();
+          showNotification("Success", "Customer has been deleted successfully.", "success");
+        } catch (err: any) {
+          showError("Could not remove customer profile", err);
+        }
+      },
+      title: "কাস্টমার প্রোফাইল ডিলিট (Delete Customer Profile)",
+      message: "আপনি কি নিশ্চিত যে আপনি এই কাস্টমারটি ডিলিট করতে চান? এর ফলে এই কাস্টমারের সমস্ত হিস্টোরি রিপোর্ট থেকে মুছে যাবে।",
+      itemName: currentCust ? `${currentCust.name} (Phone: ${currentCust.phone})` : id
+    });
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    if (!canDelete(user)) {
+      showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন (Only admin can delete).", "warning");
+      return;
     }
+
+    const currentOrd = orders.find(o => o.id === orderId);
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteOrder(orderId);
+          if (selectedCustomer) {
+            const updatedOrders = orders.filter(o => o.id !== orderId);
+            const relatedOrders = updatedOrders.filter(o => o.customer_id === selectedCustomer.id);
+            const totalAmount = relatedOrders.reduce((sum, o) => sum + o.amount, 0);
+            setSelectedCustomer({
+              ...selectedCustomer,
+              total_orders: relatedOrders.length,
+              total_spent: totalAmount,
+            });
+          }
+          showNotification("Success", "Order has been deleted successfully.", "success");
+        } catch (err: any) {
+          showError("Could not remove order", err);
+        }
+      },
+      title: "অর্ডার ডিলিট নিশ্চিতকরণ (Confirm Order Delete)",
+      message: "আপনি কি নিশ্চিত যে আপনি এই অর্ডারটি ডিলিট করতে চান? এই একশন সম্পূর্ণ অপরিবর্তনযোগ্য।",
+      itemName: currentOrd ? `Order ID: ${currentOrd.id} - Amount: ৳${currentOrd.amount}` : orderId
+    });
+    setDeleteModalOpen(true);
   };
 
   // Filter list by searchQuery
@@ -633,15 +687,28 @@ export default function Customers({ user }: CustomersProps) {
                           )}
                         </div>
 
-                        <div className="text-right">
-                          <div className="text-[10px] text-slate-405 font-sans">Profit Weight</div>
-                          <div className={`font-bold ${ord.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            ৳{ord.profit.toLocaleString()}
-                          </div>
-                          {ord.operator_name && (
-                            <div className="text-[9px] text-slate-400 font-sans mt-0.5">
-                              Agent: {ord.operator_name}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="text-[10px] text-slate-405 font-sans">Profit Weight</div>
+                            <div className={`font-bold ${ord.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              ৳{ord.profit.toLocaleString()}
                             </div>
+                            {ord.operator_name && (
+                              <div className="text-[9px] text-slate-400 font-sans mt-0.5">
+                                Agent: {ord.operator_name}
+                              </div>
+                            )}
+                          </div>
+
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(ord.id)}
+                              className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                              title="Delete Order (মুছে ফেলুন)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-450" />
+                            </button>
                           )}
                         </div>
                       </div>
@@ -881,6 +948,15 @@ export default function Customers({ user }: CustomersProps) {
           </form>
         </div>
       )}
+
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={deleteModalConfig.onConfirm}
+        title={deleteModalConfig.title}
+        message={deleteModalConfig.message}
+        itemName={deleteModalConfig.itemName}
+      />
     </div>
   );
 }

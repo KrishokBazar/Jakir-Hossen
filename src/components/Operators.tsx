@@ -16,6 +16,10 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Bulk operation states
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   // Operator Editing States
   const [editingOperator, setEditingOperator] = useState<Profile | null>(null);
   const [editName, setEditName] = useState('');
@@ -172,6 +176,108 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
     }
   };
 
+  const toggleSelectPending = (id: string) => {
+    setSelectedPendingIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllPending = (pendingOps: Profile[]) => {
+    if (selectedPendingIds.length === pendingOps.length) {
+      setSelectedPendingIds([]);
+    } else {
+      setSelectedPendingIds(pendingOps.map(op => op.id));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedPendingIds.length === 0) return;
+    const count = selectedPendingIds.length;
+    const confirmApprove = confirm(`Are you sure you want to approve all ${count} selected operator registrations?`);
+    if (!confirmApprove) return;
+
+    setBulkProcessing(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      let approvedCount = 0;
+      let failedCount = 0;
+      
+      for (const id of selectedPendingIds) {
+        try {
+          await dbService.approveOperator(id);
+          approvedCount++;
+        } catch (e) {
+          console.error(`Failed to approve operator ${id}`, e);
+          failedCount++;
+        }
+      }
+
+      const updatedOps = await dbService.getOperators();
+      setOperators(updatedOps);
+      const pendingCount = updatedOps.filter(o => !o.approved && o.role === 'operator').length;
+      onApprovalChange(pendingCount);
+
+      if (failedCount === 0) {
+        setSuccessMsg(`${approvedCount} জন অপারেটর সফলভাবে অনুমোদিত হয়েছে!`);
+        showNotification("সফল", `${approvedCount} জন অপারেটর সফলভাবে অনুমোদিত হয়েছে।`, "success");
+      } else {
+        setSuccessMsg(`${approvedCount} জন অপারেটর অনুমোদিত হয়েছে; ${failedCount} জনের ক্ষেত্রে ব্যর্থ হয়েছে।`);
+        showNotification("আংশিক সফল", `${approvedCount} জন অনুমোদিত হয়েছে, ${failedCount} জনের ক্ষেত্রে ব্যর্থ।`, "warning");
+      }
+      setSelectedPendingIds([]);
+    } catch (err: any) {
+      setErrorMsg("Bulk Approving failed: " + err.message);
+      showError("এককালীন অনুমোদন ব্যর্থ হয়েছে", err);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedPendingIds.length === 0) return;
+    const count = selectedPendingIds.length;
+    const confirmReject = confirm(`Are you sure you want to reject all ${count} selected operator registrations? This will permanently delete them.`);
+    if (!confirmReject) return;
+
+    setBulkProcessing(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      let rejectedCount = 0;
+      let failedCount = 0;
+
+      for (const id of selectedPendingIds) {
+        try {
+          await dbService.rejectOperator(id);
+          rejectedCount++;
+        } catch (e) {
+          console.error(`Failed to reject operator ${id}`, e);
+          failedCount++;
+        }
+      }
+
+      const updatedOps = await dbService.getOperators();
+      setOperators(updatedOps);
+      const pendingCount = updatedOps.filter(o => !o.approved && o.role === 'operator').length;
+      onApprovalChange(pendingCount);
+
+      if (failedCount === 0) {
+        setSuccessMsg(`${rejectedCount} জন অপারেটর সফলভাবে বাতিল / মুছে ফেলা হয়েছে!`);
+        showNotification("সফল", `${rejectedCount} জন অপারেটর সফলভাবে বাতিল / মুছে ফেলা হয়েছে।`, "success");
+      } else {
+        setSuccessMsg(`${rejectedCount} জন অপারেটর বাতিল হয়েছে; ${failedCount} জনের ক্ষেত্রে ব্যর্থ হয়েছে।`);
+        showNotification("আংশিক সফল", `${rejectedCount} জন বাতিল হয়েছে, ${failedCount} জনের ক্ষেত্রে ব্যর্থ।`, "warning");
+      }
+      setSelectedPendingIds([]);
+    } catch (err: any) {
+      setErrorMsg("Bulk Rejection failed: " + err.message);
+      showError("এককালীন বাতিল করতে ব্যর্থ হয়েছে", err);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-48">
@@ -225,15 +331,79 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
 
       {/* Pending Approval Section */}
       <div className="space-y-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-amber-500" />
-          Pending Approvals
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-500" />
+            Pending Approvals
+            {pendingOps.length > 0 && (
+              <span className="bg-amber-150 text-amber-800 text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full">
+                {pendingOps.length} Action Needed
+              </span>
+            )}
+          </h3>
+
+          {/* Bulk operation controls info */}
           {pendingOps.length > 0 && (
-            <span className="bg-amber-150 text-amber-800 text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full">
-              {pendingOps.length} Action Needed
-            </span>
+            <button
+              type="button"
+              onClick={() => handleSelectAllPending(pendingOps)}
+              className="px-2.5 py-1 text-[11px] bg-slate-100 border border-slate-250 hover:bg-slate-200 text-slate-700 rounded-md font-bold flex items-center gap-1.5 cursor-pointer select-none self-start transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selectedPendingIds.length === pendingOps.length && pendingOps.length > 0}
+                onChange={() => {}} // Click is handled on button
+                className="h-3 w-3 rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none"
+              />
+              <span>
+                {selectedPendingIds.length === pendingOps.length ? 'সব ডিসিলেক্ট (Deselect All)' : 'সব সিলেক্ট (Select All)'}
+              </span>
+            </button>
           )}
-        </h3>
+        </div>
+
+        {/* Bulk Action Panel */}
+        {selectedPendingIds.length > 0 && (
+          <div className="bg-amber-50/70 border border-amber-250 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚡</span>
+              <p className="text-xs text-slate-800 font-bold">
+                এককালীন কাজ ({selectedPendingIds.length} জন নির্বাচিত):
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBulkApprove}
+                disabled={bulkProcessing}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              >
+                {bulkProcessing ? (
+                  <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                ) : (
+                  <CheckCircle className="w-3.5 h-3.5" />
+                )}
+                <span>বাঙ্ক অনুমোদন (Bulk Approve)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkReject}
+                disabled={bulkProcessing}
+                className="px-3.5 py-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed text-rose-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>বাঙ্ক বাতিল (Bulk Reject)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPendingIds([])}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium px-2 py-1 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {pendingOps.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 p-6 rounded-xl text-center">
@@ -241,75 +411,153 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingOps.map((op) => (
-              <div key={op.id} className="bg-amber-50/40 p-4.5 rounded-xl border border-amber-200 shadow-xs flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-start mb-2 gap-3">
-                    <div className="flex items-center gap-2">
-                      {op.photo_url ? (
-                        <img 
-                          src={op.photo_url} 
-                          alt={op.name}
-                          className="w-10 h-10 rounded-full object-cover border border-amber-200 shadow-xs shrink-0" 
+            {pendingOps.map((op) => {
+              const isSelected = selectedPendingIds.includes(op.id);
+              return (
+                <div 
+                  key={op.id} 
+                  className={`p-4.5 rounded-xl border shadow-xs flex flex-col justify-between transition-all duration-300 ${
+                    isSelected 
+                      ? 'bg-amber-100/40 border-amber-400 ring-2 ring-amber-300/30' 
+                      : 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/60'
+                  }`}
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-2 gap-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectPending(op.id)}
+                          className="h-4.5 w-4.5 rounded border-slate-350 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
                         />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs shrink-0">
-                          {op.name.charAt(0).toUpperCase()}
+                        {op.photo_url ? (
+                          <img 
+                            src={op.photo_url} 
+                            alt={op.name}
+                            className="w-10 h-10 rounded-full object-cover border border-amber-200 shadow-xs shrink-0 cursor-pointer" 
+                            onClick={() => toggleSelectPending(op.id)}
+                          />
+                        ) : (
+                          <div 
+                            className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs shrink-0 cursor-pointer select-none"
+                            onClick={() => toggleSelectPending(op.id)}
+                          >
+                            {op.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div 
+                          className="cursor-pointer select-none" 
+                          onClick={() => toggleSelectPending(op.id)}
+                        >
+                          <h4 className="font-bold text-slate-900 hover:text-amber-800 transition-colors">{op.name}</h4>
+                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-wider block mt-0.5 w-max">
+                            Pending Role: Operator
+                          </span>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs text-slate-600 mb-4 pl-7.5">
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                        {op.phone}
+                      </div>
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Registered: {new Date(op.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 border-t border-amber-200 pt-3 pl-7.5">
+                    <button
+                      onClick={() => handleApprove(op)}
+                      disabled={processingId !== null || bulkProcessing}
+                      className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-450 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      {processingId === op.id ? (
+                        <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                      ) : (
+                        <UserCheck className="w-3.5 h-3.5" />
                       )}
-                      <h4 className="font-bold text-slate-900">{op.name}</h4>
-                    </div>
-                    <span className="bg-amber-100 text-amber-800 text-[9px] uppercase font-bold px-2 py-0.5 rounded-sm shrink-0">
-                      PENDING ROLE
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs text-slate-600 mb-4">
-                    <div className="flex items-center gap-1.5 font-mono">
-                      <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-                      {op.phone}
-                    </div>
-                    <div className="flex items-center gap-1.5 font-mono">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Registered: {new Date(op.created_at).toLocaleDateString()}</span>
-                    </div>
+                      {processingId === op.id ? 'Approving...' : 'Approve Only'}
+                    </button>
+                    <button
+                      onClick={() => handleReject(op.id, op.name)}
+                      disabled={processingId !== null || bulkProcessing}
+                      className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 disabled:opacity-50 rounded-lg border border-rose-200 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Reject operator"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex gap-2 border-t border-amber-200 pt-3">
-                  <button
-                    onClick={() => handleApprove(op)}
-                    disabled={processingId !== null}
-                    className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-450 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    {processingId === op.id ? (
-                      <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent animate-spin rounded-full" />
-                    ) : (
-                      <UserCheck className="w-3.5 h-3.5" />
-                    )}
-                    {processingId === op.id ? 'Approving...' : 'Approve Operator'}
-                  </button>
-                  <button
-                    onClick={() => handleReject(op.id, op.name)}
-                    disabled={processingId !== null}
-                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 disabled:opacity-50 rounded-lg border border-rose-200 flex items-center justify-center cursor-pointer transition-colors"
-                    title="Reject operator"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* Active/Approved Operators Section */}
       <div className="space-y-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-          <CheckCircle className="w-4 h-4 text-emerald-600" />
-          Approved Operators, Co-Founders & Admins
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            Approved Operators, Co-Founders & Admins
+          </h3>
+        </div>
+
+        {/* Security & Access Level Console */}
+        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-amber-50/50 border border-amber-200/95 rounded-lg p-3.5 space-y-2.5">
+            <h4 className="text-xs font-bold text-amber-905 flex items-center gap-1.5">
+              <span className="text-sm">👑</span> 
+              প্রধান এবং একমাত্র সুপার-অ্যাডমিন (Super-Admin Profile & Power)
+            </h4>
+            <p className="text-[11px] text-slate-700 leading-relaxed">
+              সুপার-অ্যাডমিন অ্যাকাউন্ট (<strong className="font-mono text-amber-900">ajzakir004@gmail.com</strong>) একমাত্র সিস্টেম নিয়ন্ত্রক যার সব ধরনের এডিটিং ও ডিলিশন অধিকার সুরক্ষিত আছে।
+            </p>
+            <div className="space-y-1">
+              <div className="flex items-start gap-1 text-[11px] text-emerald-850">
+                <span className="font-bold">✓</span>
+                <span>অপারেটর এবং কো-ফাউন্ডার প্রোফাইল অনুমোদন ও সম্পাদনা।</span>
+              </div>
+              <div className="flex items-start gap-1 text-[11px] text-emerald-850">
+                <span className="font-bold">✓</span>
+                <span>কৃষক, অর্ডার, স্টাফ এবং অন্যান্য খরচের ডেটা ডিলিট বা মডিফাই।</span>
+              </div>
+              <div className="flex items-start gap-1 text-[11px] text-emerald-850">
+                <span className="font-bold">✓</span>
+                <span>রুট অ্যাকাউন্ট এক্সেস দিয়ে সরাসরি সার্ভার কনফিগারেশন।</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-rose-50/25 border border-rose-150 rounded-lg p-3.5 space-y-2.5">
+            <h4 className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              অন্যান্য কর্মকর্তা বা অপারেটরদের জন্য লকড অ্যাকশন (Locked Actions for Staff)
+            </h4>
+            <p className="text-[11px] text-slate-755 leading-relaxed">
+              ডাটা সুরক্ষায় ও বেআইনি মডিফিকেশন রুখতে সাধারণ অপারেটরদের জন্য নিচের অ্যাকশনগুলো ব্লকড:
+            </p>
+            <div className="space-y-1">
+              <div className="flex items-start gap-1 text-[11px] text-rose-800">
+                <span className="font-bold">✗</span>
+                <span>কোনো অর্ডার বা নগদ খরচের ডাটা স্থায়ীভাবে ডিলিট করা সম্পূর্ণ লকড।</span>
+              </div>
+              <div className="flex items-start gap-1 text-[11px] text-rose-800">
+                <span className="font-bold">✗</span>
+                <span>অন্য কর্মকর্তাদের লগইন ক্রেডেনশিয়াল বা রোল এক্সেস এডজাস্ট করা।</span>
+              </div>
+              <div className="flex items-start gap-1 text-[11px] text-rose-800">
+                <span className="font-bold">✗</span>
+                <span>অডিট লগ বা চূড়ান্ত ট্রানজেকশন ডাটা রিমুভ করা নিষিদ্ধ।</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {approvedOps.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 p-6 rounded-xl text-center animate-pulse">
@@ -329,65 +577,88 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {approvedOps.map((op) => (
-                  <tr key={op.id} className="hover:bg-slate-50/55 transition-colors">
-                    <td className="px-5 py-3.5 font-bold text-slate-900">{op.name}</td>
-                    <td className="px-5 py-3.5 font-mono text-slate-650">{op.phone || op.email || 'Root Account'}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase ${
-                        op.role === 'admin' 
-                          ? 'bg-purple-100 text-purple-800' 
-                          : op.role === 'cofounder' 
-                            ? 'bg-indigo-100 text-indigo-800' 
-                            : 'bg-emerald-100 text-emerald-800'
-                      }`}>
-                        {op.role}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono font-semibold text-rose-600 bg-rose-50/20 px-2 py-0.5 rounded border border-rose-100/30 max-w-[120px] truncate">
-                      {(op as any).password || <span className="text-slate-400 font-sans">Not set / admin override</span>}
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-450 font-mono">{new Date(op.created_at).toLocaleDateString()}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      {op.email !== 'ajzakir004@gmail.com' ? (
-                        <div className="flex justify-end gap-2">
-                          {/* Edit operator button */}
-                          <button
-                            onClick={() => startEditOperator(op)}
-                            className="p-1 px-2 border border-slate-250 rounded-md hover:bg-slate-100 text-slate-600 flex items-center gap-1 cursor-pointer font-bold"
-                            title="Edit Operator details"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 text-blue-500" /> সম্পাদনা (Edit)
-                          </button>
-
-                          {/* Force Notify Button via WhatsApp */}
-                          {op.phone && (
-                            <button
-                              onClick={() => {
-                                const msg = encodeURIComponent(`অপারেটর নোটিশ: কৃষক বাজারে আপনার অ্যাকাউন্টের অ্যাক্সেস সক্রিয় আছে। লগইন করে এন্ট্রি দিতে পারবেন।`);
-                                window.open(`https://wa.me/${op.phone}?text=${msg}`, '_blank');
-                              }}
-                              className="p-1 px-2 border border-slate-250 rounded-md hover:bg-slate-100 text-slate-600 flex items-center gap-1 cursor-pointer"
-                              title="Send Message"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5 text-slate-500" /> Notify
-                            </button>
+                {approvedOps.map((op) => {
+                  const isSuperAdmin = op.email?.toLowerCase().trim() === 'ajzakir004@gmail.com';
+                  return (
+                    <tr 
+                      key={op.id} 
+                      className={`transition-colors ${
+                        isSuperAdmin 
+                          ? 'bg-amber-50/15 border-l-4 border-amber-500 hover:bg-amber-50/30' 
+                          : 'hover:bg-slate-50/55'
+                      }`}
+                    >
+                      <td className="px-5 py-3.5 font-bold text-slate-900">
+                        <div className="flex items-center gap-1.5">
+                          {op.name}
+                          {isSuperAdmin && (
+                            <span className="bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-extrabold flex items-center gap-0.5 uppercase tracking-wide">
+                              👑 Super Admin
+                            </span>
                           )}
-
-                          <button
-                            onClick={() => handleReject(op.id, op.name)}
-                            className="p-1 text-rose-600 border border-thin border-rose-200 hover:bg-rose-50 rounded-md cursor-pointer"
-                            title="Disable/Delete Operator"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase bg-slate-50 px-2 py-0.5 rounded-sm">Protected</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3.5 font-mono text-slate-650">{op.phone || op.email || 'Root Account'}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase ${
+                          isSuperAdmin
+                            ? 'bg-amber-600 text-white'
+                            : op.role === 'admin' 
+                              ? 'bg-purple-100 text-purple-800' 
+                              : op.role === 'cofounder' 
+                                ? 'bg-indigo-100 text-indigo-800' 
+                                : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isSuperAdmin ? 'SUPER ADMIN' : op.role}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 font-mono font-semibold text-rose-600 bg-rose-50/20 px-2 py-0.5 rounded border border-rose-100/30 max-w-[120px] truncate">
+                        {(op as any).password || <span className="text-slate-400 font-sans">Not set / admin override</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-450 font-mono">{new Date(op.created_at).toLocaleDateString()}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        {!isSuperAdmin ? (
+                          <div className="flex justify-end gap-2">
+                            {/* Edit operator button */}
+                            <button
+                              onClick={() => startEditOperator(op)}
+                              className="p-1 px-2 border border-slate-250 rounded-md hover:bg-slate-100 text-slate-600 flex items-center gap-1 cursor-pointer font-bold"
+                              title="Edit Operator details"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-blue-500" /> সম্পাদনা (Edit)
+                            </button>
+
+                            {/* Force Notify Button via WhatsApp */}
+                            {op.phone && (
+                              <button
+                                onClick={() => {
+                                  const msg = encodeURIComponent(`অপারেটর নোটিশ: কৃষক বাজারে আপনার অ্যাকাউন্টের অ্যাক্সেস সক্রিয় আছে। লগইন করে এন্ট্রি দিতে পারবেন।`);
+                                  window.open(`https://wa.me/${op.phone}?text=${msg}`, '_blank');
+                                }}
+                                className="p-1 px-2 border border-slate-250 rounded-md hover:bg-slate-100 text-slate-600 flex items-center gap-1 cursor-pointer"
+                                title="Send Message"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 text-slate-500" /> Notify
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleReject(op.id, op.name)}
+                              className="p-1 text-rose-600 border border-thin border-rose-200 hover:bg-rose-50 rounded-md cursor-pointer"
+                              title="Disable/Delete Operator"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-amber-700 bg-amber-100/80 px-2.5 py-1 rounded-sm font-bold flex items-center gap-1 justify-end select-none">
+                            <Lock className="w-3 h-3 text-amber-650" /> System Owner Protected
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -3,6 +3,7 @@ import { dbService } from '../db';
 import { DailyLog, Profile } from '../types';
 import { useNotification } from './NotificationContext';
 import { canDelete } from '../utils/auth';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { 
   ClipboardList, 
   Search, 
@@ -33,6 +34,20 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
   const { showError, showNotification } = useNotification();
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    itemName: string;
+  }>({
+    onConfirm: () => {},
+    title: '',
+    message: '',
+    itemName: ''
+  });
 
   // Search & Filtering
   const [searchQuery, setSearchQuery] = useState('');
@@ -272,19 +287,28 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
   };
 
   // Handle Deleting (Admin only)
-  const handleDeleteLog = async (id: string) => {
+  const handleDeleteLog = (id: string) => {
     if (!isAdmin) {
       showNotification("অনুমতি নেই", "দুঃখিত, শুধুমাত্র অ্যাডমিন ডিলিট করতে পারবেন (Only admin can delete).", "warning");
       return;
     }
-    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই লগটি ডিলিট করতে চান?")) return;
 
-    try {
-      await dbService.deleteDailyLog(id);
-      showNotification("ডিলিট করা হয়েছে", "অপারেশন লগ ডিলিট করা হয়েছে।", "success");
-    } catch (err: any) {
-      showError("লগ ডিলিট করতে সমস্যা হয়েছে", err);
-    }
+    const currentLog = logs.find(l => l.id === id);
+
+    setDeleteModalConfig({
+      onConfirm: async () => {
+        try {
+          await dbService.deleteDailyLog(id);
+          showNotification("ডিলিট করা হয়েছে", "অপারেশন লগ ডিলিট করা হয়েছে।", "success");
+        } catch (err: any) {
+          showError("লগ ডিলিট করতে সমস্যা হয়েছে", err);
+        }
+      },
+      title: "অপারেশন লগ ডিলিট নিশ্চিতকরণ (Confirm Operation Log Delete)",
+      message: "আপনি কি নিশ্চিত যে আপনি এই অপারেশন লগটি ডিলিট করতে চান? এই একশন সম্পূর্ণ অপরিবর্তনযোগ্য।",
+      itemName: currentLog ? `Type: ${currentLog.event_type} - Description: ${currentLog.description}` : id
+    });
+    setDeleteModalOpen(true);
   };
 
   // Helper to get Event Type visual badges & styling
@@ -1081,6 +1105,14 @@ export default function DailyOperationsLog({ user }: DailyOperationsLogProps) {
         </div>
       )}
 
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={deleteModalConfig.onConfirm}
+        title={deleteModalConfig.title}
+        message={deleteModalConfig.message}
+        itemName={deleteModalConfig.itemName}
+      />
     </div>
   );
 }
