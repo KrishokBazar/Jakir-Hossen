@@ -22,7 +22,8 @@ import {
   FileText,
   Navigation,
   Mic,
-  MicOff
+  MicOff,
+  Camera
 } from 'lucide-react';
 
 interface CustomersProps {
@@ -150,6 +151,7 @@ export default function Customers({ user }: CustomersProps) {
 
   // Modal / Drawer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [zoomedOrderPhotoUrl, setZoomedOrderPhotoUrl] = useState<string | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [mergingSource, setMergingSource] = useState<Customer | null>(null);
   const [mergingTargetId, setMergingTargetId] = useState('');
@@ -685,6 +687,18 @@ export default function Customers({ user }: CustomersProps) {
                               <span className="truncate">GPS: {ord.gps_location}</span>
                             </div>
                           )}
+                          {ord.photo_url && (
+                            <div className="mt-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setZoomedOrderPhotoUrl(ord.photo_url || null)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-sm text-[10px] font-sans font-medium cursor-pointer transition-colors"
+                              >
+                                <Camera className="w-3 h-3 text-emerald-600" />
+                                <span>ছবি দেখুন (View Voucher)</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3">
@@ -957,6 +971,38 @@ export default function Customers({ user }: CustomersProps) {
         message={deleteModalConfig.message}
         itemName={deleteModalConfig.itemName}
       />
+
+      {/* Zoomed Photo Lightbox Modal */}
+      {zoomedOrderPhotoUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          onClick={() => setZoomedOrderPhotoUrl(null)}
+        >
+          <div 
+            className="relative bg-white/5 border border-white/10 rounded-2xl p-2.5 max-w-lg w-full flex flex-col items-center shadow-2xl transition-transform duration-300 transform scale-102"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomedOrderPhotoUrl(null)}
+              className="absolute top-4 right-4 p-2 bg-slate-900/60 text-white hover:text-red-400 hover:scale-105 active:scale-95 rounded-full shadow-lg border border-slate-700/50 backdrop-blur-xs transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="w-full max-h-[75vh] rounded-xl overflow-hidden bg-slate-900/40 border border-slate-750 flex items-center justify-center">
+              <img 
+                src={zoomedOrderPhotoUrl} 
+                alt="Zoomed voucher document" 
+                className="max-w-full max-h-[72vh] object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="mt-3.5 text-center text-xs text-slate-300 font-sans tracking-wide">
+              (অর্ডার রশিদ / সংযুক্ত ছবি) Click outside or tap close.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

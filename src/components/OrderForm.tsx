@@ -1,9 +1,10 @@
-import { useEffect, useState, FormEvent, useRef } from 'react';
+import { useEffect, useState, FormEvent, useRef, ChangeEvent } from 'react';
 import { dbService } from '../db';
 import { CostSettings, Customer, Profile } from '../types';
 import { useNotification } from './NotificationContext';
-import { ShoppingCart, Phone, User, MapPin, DollarSign, FileText, CheckCircle, Smartphone, QrCode, Camera, Navigation, Compass, Locate, Loader2, Mic, MicOff } from 'lucide-react';
+import { ShoppingCart, Phone, User, MapPin, DollarSign, FileText, CheckCircle, Smartphone, QrCode, Camera, Navigation, Compass, Locate, Loader2, Mic, MicOff, Image, X, UploadCloud } from 'lucide-react';
 import BarcodeScannerModal from './BarcodeScannerModal';
+import { compressImage } from '../utils/imageCompressor';
 
 interface OrderFormProps {
   user: Profile;
@@ -27,6 +28,44 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
   const [deliveryCostStr, setDeliveryCostStr] = useState('');
   const [otherCostsStr, setOtherCostsStr] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Image Upload and Compression states
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState<number>(-1);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showNotification("ত্রুটি", "অনুগ্রহ করে শুধু ছবি আপলোড করুন।", "error");
+      return;
+    }
+
+    try {
+      setUploadProgress(10);
+      
+      const timer1 = setTimeout(() => setUploadProgress(35), 100);
+      const timer2 = setTimeout(() => setUploadProgress(65), 250);
+      const timer3 = setTimeout(() => setUploadProgress(85), 450);
+
+      const compressedBase64 = await compressImage(file, 640, 640, 0.7);
+      
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      
+      setUploadProgress(100);
+      setTimeout(() => {
+        setPhotoUrl(compressedBase64);
+        setUploadProgress(-1);
+        showNotification("সফল", "ছবি সফলভাবে সংকোচিত ও যুক্ত করা হয়েছে।", "success");
+      }, 300);
+
+    } catch (err: any) {
+      setUploadProgress(-1);
+      showNotification("ত্রুটি", "ছবি প্রসেস করতে ত্রুটি হয়েছে।", "error");
+      console.error(err);
+    }
+  };
 
   // Scanner and Device integration parameters
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -356,6 +395,7 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
           other_costs: otherCostsVal,
           notes: notes.trim() || undefined,
           gps_location: gpsLocationStr || undefined,
+          photo_url: photoUrl || undefined,
         },
         user.id
       );
@@ -853,6 +893,127 @@ export default function OrderForm({ user, onSuccessRedirect }: OrderFormProps) {
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Receipt/Voucher Image Upload Field with Client-side Compression & Visual Progress Bar */}
+            <div className="md:col-span-3 mt-1.5">
+              <label className="block text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-emerald-600" />
+                <span>Order Receipt or Delivery Photo (অর্ডার রশিদ অথবা ছবি)</span>
+              </label>
+
+              {/* Upload States */}
+              {uploadProgress > -1 ? (
+                /* Compression in Progress Block */
+                <div className="border border-emerald-100 bg-emerald-50/40 rounded-xl p-5 text-center flex flex-col items-center justify-center space-y-4 shadow-xs transition-all duration-300">
+                  <div className="bg-emerald-100 text-emerald-600 p-2.5 rounded-full animate-bounce">
+                    <UploadCloud className="w-6 h-6" />
+                  </div>
+                  
+                  <div className="w-full max-w-sm space-y-2">
+                    <div className="flex justify-between items-center text-xs text-emerald-800 font-medium font-sans">
+                      <span className="animate-pulse">পদ্ধতি সচল: ছবি সংকোচন ও লোড হচ্ছে...</span>
+                      <span className="font-mono bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">{uploadProgress}%</span>
+                    </div>
+
+                    {/* Progress Bar Container */}
+                    <div className="w-full bg-slate-200/80 h-2.5 rounded-full overflow-hidden shadow-inner border border-emerald-100">
+                      <div 
+                        className="bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-500 h-full rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 font-sans italic pt-1">
+                      (Client-side compression runs automatically to safe Firestore database document limit)
+                    </p>
+                  </div>
+                </div>
+              ) : photoUrl ? (
+                /* Compressed Image Preview Card */
+                <div className="relative border border-slate-200 bg-slate-50/50 rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4.5 group transition-all duration-300">
+                  <div className="relative w-28 h-28 shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shadow-xs">
+                    <img 
+                      src={photoUrl} 
+                      alt="Order receipt thumbnail" 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhotoUrl('');
+                        showNotification("ছবি সরানো হয়েছে", "রশিদ বা ডেলিভারি ছবি বাতিল করা হয়েছে।", "info");
+                      }}
+                      className="absolute top-1 right-1 p-1 bg-rose-600/90 hover:bg-rose-600 text-white rounded-full shadow-md backdrop-blur-xs transition-colors duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+                      title="Remove Photo"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                    <div className="flex items-center justify-center sm:justify-start gap-1.5 text-emerald-700 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-md inline-flex">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>সংকুচিত ছবি যুক্ত হয়েছে</span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      আপনার অর্ডার ফাইলের সাথে একটি রশিদের ছবি সফলভাবে সংযুক্ত করা হয়েছে। মূল ফর্মটি সংরক্ষণ করলে এটি ডেটাবেজে সংরক্ষিত হবে।
+                    </p>
+                    <p className="text-[10px] font-mono text-slate-400">
+                      Payload safe check: ~{(photoUrl.length / 1024).toFixed(1)} KB (Firestore limit safe)
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                /* Drag & Drop File Upload Input */
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                      handlePhotoUpload(files[0]);
+                    }
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-6.5 text-center flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${
+                    isDragging
+                      ? 'border-emerald-500 bg-emerald-50/50 scale-[0.99] shadow-inner'
+                      : 'border-slate-200 hover:border-emerald-400 bg-white hover:bg-slate-50/40'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files && files.length > 0) {
+                        handlePhotoUpload(files[0]);
+                      }
+                    }}
+                    id="order-photo-uploader"
+                    className="hidden"
+                  />
+                  <label htmlFor="order-photo-uploader" className="cursor-pointer space-y-2.5 flex flex-col items-center">
+                    <div className="bg-slate-100 text-slate-500 p-3 rounded-full group-hover:text-emerald-600 group-hover:bg-emerald-50 transition-colors duration-200">
+                      <UploadCloud className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-slate-800">
+                        ক্লিক করুন অথবা ছবি এখানে ড্র্যাগ ও ড্রপ করুন
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        PNG, JPG, JPEG (কম্প্রেস করে ১ মেগাবাইটের ভেতরে রাখা হবে)
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { safeStorage } from '../utils/storage';
 import { ChatMessage, Profile, ChatGroup } from '../types';
 import { useNotification } from './NotificationContext';
 import { playIncomingTone, playOutgoingTone } from '../utils/audio';
+import { compressImage } from '../utils/imageCompressor';
 import { 
   Send, 
   User, 
@@ -643,42 +644,48 @@ export default function LiveChat() {
   }, [activeMessages, activeReceiverId]);
 
   // Read file as Base64 helper (works for images and documents) and extracts rich metadata
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("ফাইল সাইজ খুব বড়! অনুগ্রহ করে ২MB এর চেয়ে ছোট ফাইল নির্বাচন করুন।");
-        return;
-      }
       setAttachedFileName(file.name);
       setDraftFilter('none'); // Reset filters
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64Str = reader.result as string;
-        setAttachedBase64(base64Str);
-        
+
+      try {
         if (file.type.startsWith('image/')) {
-          // Client-side image dimensions reader
+          const compressedBase64 = await compressImage(file, 640, 640, 0.75);
+          setAttachedBase64(compressedBase64);
+
           const img = new Image();
           img.onload = () => {
             setAttachedImageMeta({
               width: img.naturalWidth || img.width,
               height: img.naturalHeight || img.height,
-              size: (file.size / 1024).toFixed(1) + ' KB',
+              size: Math.round(compressedBase64.length / 1.33 / 1024) + ' KB',
               type: file.type.split('/')[1]?.toUpperCase() || 'IMG'
             });
           };
-          img.src = base64Str;
+          img.src = compressedBase64;
         } else {
-          setAttachedImageMeta({
-            width: 0,
-            height: 0,
-            size: (file.size / 1024).toFixed(1) + ' KB',
-            type: file.type.split('/')[1]?.toUpperCase() || 'FILE'
-          });
+          if (file.size > 2 * 1024 * 1024) {
+            alert("ফাইল সাইজ খুব বড়! অনুগ্রহ করে ২MB এর চেয়ে ছোট ফাইল নির্বাচন করুন।");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Str = reader.result as string;
+            setAttachedBase64(base64Str);
+            setAttachedImageMeta({
+              width: 0,
+              height: 0,
+              size: (file.size / 1024).toFixed(1) + ' KB',
+              type: file.type.split('/')[1]?.toUpperCase() || 'FILE'
+            });
+          };
+          reader.readAsDataURL(file);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err: any) {
+        showNotification("ত্রুটি", "ফাইল প্রসেস করতে ত্রুটি হয়েছে।", "error");
+      }
     }
   };
 

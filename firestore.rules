@@ -81,7 +81,7 @@ service cloud.firestore {
         'product_cost', 'delivery_cost', 'other_costs', 'total_cost', 
         'profit', 'order_date'
       ])
-        && data.keys().size() <= 15
+        && data.keys().size() <= 17
         && data.id is string && data.id.size() <= 64
         && data.customer_id is string && data.customer_id.size() <= 64
         && data.customer_name is string && data.customer_name.size() <= 100
@@ -101,8 +101,10 @@ service cloud.firestore {
         // Check order status constraints matching user instructions:
         // Positive amounts for standard deliveries, negative amounts for returns.
         && ( (data.status == 'delivery' && data.amount >= 0) || (data.status == 'return' && data.amount <= 0) )
-        && data.order_date is string && data.order_date.size() <= 64
-        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+        && data.order_date is string && data.order_date.size() <= 100
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && (!('gps_location' in data) || (data.gps_location is string && data.gps_location.size() <= 300))
+        && (!('photo_url' in data) || (data.photo_url is string && data.photo_url.size() <= 2000000));
     }
 
     match /orders/{orderId} {

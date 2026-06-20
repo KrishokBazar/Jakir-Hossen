@@ -614,6 +614,7 @@ export const dbService = {
       other_costs: number;
       notes?: string;
       gps_location?: string;
+      photo_url?: string;
     },
     operatorId: string
   ): Promise<Order> {
@@ -665,7 +666,8 @@ export const dbService = {
         profit: profit,
         order_date: new Date().toISOString(),
         notes: orderData.notes || '',
-        gps_location: orderData.gps_location || ''
+        gps_location: orderData.gps_location || '',
+        photo_url: orderData.photo_url || ''
       };
 
       await setDoc(doc(db, 'orders', orderId), newOrder);

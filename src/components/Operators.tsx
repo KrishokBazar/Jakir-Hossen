@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
 import { dbService } from '../db';
 import { Profile } from '../types';
 import { useNotification } from './NotificationContext';
+import { compressImage } from '../utils/imageCompressor';
 import { Users, CheckCircle, ShieldAlert, Trash2, Smartphone, Calendar, UserCheck, MessageSquare, RefreshCw, Edit3, Key, Lock, X, Save } from 'lucide-react';
 
 interface OperatorsProps {
@@ -29,18 +30,15 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
   const [editApproved, setEditApproved] = useState(true);
   const [editPhotoUrl, setEditPhotoUrl] = useState('');
 
-  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("ছবিটির সাইজ খুব বড় (অনুগ্রহ করে ২ মেগাবাইটের কম সাইজের ছবি দিন)");
-        return;
+      try {
+        const compressedBase64 = await compressImage(file, 500, 500, 0.7);
+        setEditPhotoUrl(compressedBase64);
+      } catch (err: any) {
+        showError("ছবি আপলোড করতে ত্রুটি হয়েছে", err);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 

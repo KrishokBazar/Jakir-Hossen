@@ -3,6 +3,7 @@ import { dbService } from '../db';
 import { ChatMessage, Profile, ChatGroup } from '../types';
 import { useNotification } from './NotificationContext';
 import { playIncomingTone, playOutgoingTone } from '../utils/audio';
+import { compressImage } from '../utils/imageCompressor';
 import { 
   Send, 
   User, 
@@ -193,19 +194,28 @@ export default function FloatingChat() {
     }
   }, [messages, activeReceiverId, activeTab, isOpen, currentUser]);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("২MB এর চেয়ে ছোট ছবি বা ফাইল নির্বাচন করুন।");
-        return;
-      }
       setAttachedFileName(file.name);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAttachedBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        if (file.type.startsWith('image/')) {
+          const compressedBase64 = await compressImage(file, 640, 640, 0.75);
+          setAttachedBase64(compressedBase64);
+        } else {
+          if (file.size > 2 * 1024 * 1024) {
+            alert("২MB এর চেয়ে ছোট ছবি বা ফাইল নির্বাচন করুন।");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setAttachedBase64(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+        }
+      } catch (err: any) {
+        showNotification("ত্রুটি", "ফাইল প্রসেস করতে ত্রুটি হয়েছে।", "error");
+      }
     }
   };
 

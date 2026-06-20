@@ -40,6 +40,7 @@ export interface Order {
   order_date: string;
   notes?: string;
   gps_location?: string;
+  photo_url?: string;
 }
 
 export interface CostSettings {

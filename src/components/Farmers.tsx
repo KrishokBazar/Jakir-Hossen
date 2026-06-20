@@ -3,6 +3,7 @@ import { dbService } from '../db';
 import { Farmer, FarmerPayment, FarmerSale, Profile } from '../types';
 import { useNotification } from './NotificationContext';
 import { canDelete } from '../utils/auth';
+import { compressImage } from '../utils/imageCompressor';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { 
   Users, 
@@ -156,18 +157,15 @@ export default function Farmers({ user }: FarmersProps) {
   const [farmerPhotoUrl, setFarmerPhotoUrl] = useState('');
   const [farmerError, setFarmerError] = useState<string | null>(null);
 
-  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("ছবিটির সাইজ খুব বড় (অনুগ্রহ করে ২ মেগাবাইটের কম সাইজের ছবি দিন)");
-        return;
+      try {
+        const compressedBase64 = await compressImage(file, 500, 500, 0.7);
+        setFarmerPhotoUrl(compressedBase64);
+      } catch (err: any) {
+        showError("ছবি আপলোড করতে ত্রুটি হয়েছে", err);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFarmerPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
