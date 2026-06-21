@@ -206,4 +206,21 @@ export interface CofounderNote {
   created_at: string;
 }
 
+export interface OfficePlan {
+  id: string;
+  title: string;
+  type: 'target' | 'plan' | 'routine';
+  period: 'daily' | 'weekly' | 'monthly';
+  content: string;
+  assigned_to?: string;
+  assigned_to_id?: string;
+  target_value?: string;
+  achievement_status?: 'pending' | 'achieved' | 'on_track' | 'completed' | string;
+  schedule_day?: string; // Saturday, Sunday, Monday, Tuesday, Wednesday, Thursday, Friday
+  created_at: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+
 

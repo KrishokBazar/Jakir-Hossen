@@ -14,6 +14,7 @@ import Farmers from './components/Farmers';
 import DailyOperationsLog from './components/DailyOperationsLog';
 import LiveChat from './components/LiveChat';
 import CofounderWorkspace from './components/CofounderWorkspace';
+import OfficeWorkspace from './components/OfficeWorkspace';
 import FloatingChat from './components/FloatingChat';
 import AppVersionChecker from './components/AppVersionChecker';
 import NetworkStatusNotifier from './components/NetworkStatusNotifier';
@@ -40,6 +41,7 @@ import {
   ClipboardList,
   MessageSquare,
   Briefcase,
+  Target,
   WifiOff,
   Cloud,
   Check,
@@ -245,6 +247,7 @@ export default function App() {
   // Navigation Links Definition
   const navigationItems = [
     { id: 'dashboard', name: 'ড্যাশবোর্ড (Dashboard)', icon: Grid, roleRequired: 'all' },
+    { id: 'office_workspace', name: 'টার্গেট ও রুটিন (Workspace)', icon: Target, roleRequired: 'all' },
     { id: 'cofounder', name: 'কো-ফাউন্ডার ড্যাশবোর্ড (Cofounder)', icon: Briefcase, roleRequired: 'cofounder_or_admin' },
     { id: 'order_entry', name: 'অর্ডার এন্ট্রি (Add Order)', icon: PlusCircle, roleRequired: 'all' },
     { id: 'customers', name: 'গ্রাহক তালিকা (Customers)', icon: Users, roleRequired: 'all' },
@@ -493,6 +496,9 @@ export default function App() {
           )}
           {currentTab === 'cost_settings' && isAdmin && (
             <CostSettingsView user={currentUser} />
+          )}
+          {currentTab === 'office_workspace' && (
+            <OfficeWorkspace user={currentUser} />
           )}
           {currentTab === 'cofounder' && (isAdmin || isCofounder) && (
             <CofounderWorkspace user={currentUser} />

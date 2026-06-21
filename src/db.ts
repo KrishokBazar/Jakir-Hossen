@@ -82,7 +82,7 @@ async function deleteDoc(docRef: DocumentReference<any, any>) {
     }
   }
 }
-import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup } from './types';
+import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup, OfficePlan } from './types';
 
 // Supabase fallback modes (disabled to prefer Firebase)
 export const isSupabaseConfigured = (): boolean => {
@@ -1802,6 +1802,61 @@ export const dbService = {
       console.error("Failed to delete chat message:", e);
       throw e;
     }
+  },
+
+  async addOfficePlan(plan: Omit<OfficePlan, 'id' | 'created_at'>): Promise<void> {
+    try {
+      const id = doc(collection(db, 'office_plans')).id;
+      const ref = doc(db, 'office_plans', id);
+      const newPlan: OfficePlan = {
+        ...plan,
+        id,
+        created_at: new Date().toISOString()
+      };
+      await setDoc(ref, newPlan);
+    } catch (e) {
+      console.error("Failed to add office plan:", e);
+      throw e;
+    }
+  },
+
+  async updateOfficePlan(id: string, updates: Partial<OfficePlan>): Promise<void> {
+    try {
+      const ref = doc(db, 'office_plans', id);
+      await updateDoc(ref, {
+        ...updates,
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Failed to update office plan:", e);
+      throw e;
+    }
+  },
+
+  async deleteOfficePlan(id: string): Promise<void> {
+    try {
+      const ref = doc(db, 'office_plans', id);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("Failed to delete office plan:", e);
+      throw e;
+    }
+  },
+
+  subscribeOfficePlans(onUpdate: (plans: OfficePlan[]) => void, onError?: (err: any) => void): () => void {
+    const q = collection(db, 'office_plans');
+    return onSnapshot(q, (snap) => {
+      const list: OfficePlan[] = [];
+      snap.forEach((docRef) => {
+        list.push(docRef.data() as OfficePlan);
+      });
+      // Sort plans so targets, routines, plans can be ordered or custom managed
+      const sorted = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      onUpdate(sorted);
+    }, (error) => {
+      console.error("Error subscribing to office plans:", error);
+      if (onError) onError(error);
+    });
   }
 
 

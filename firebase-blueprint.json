@@ -207,6 +207,27 @@
         "timestamp": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
       "required": ["id", "sender_id", "sender_name", "sender_role", "receiver_id", "receiver_name", "message", "timestamp"]
+    },
+    "office_plan": {
+      "title": "OfficePlan",
+      "description": "Office plans, targets, schedules, and routines managed by Admins and viewable by everyone",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique record identifier" },
+        "title": { "type": "string", "description": "Title of the plan, routine, or target" },
+        "type": { "type": "string", "enum": ["target", "plan", "routine"], "description": "Type of item" },
+        "period": { "type": "string", "enum": ["daily", "weekly", "monthly"], "description": "Plan or routine period (daily, weekly, monthly)" },
+        "content": { "type": "string", "description": "Detailed description or parameters of the plan" },
+        "assigned_to": { "type": "string", "description": "Optional staff or operator name assigned to the item" },
+        "assigned_to_id": { "type": "string", "description": "Unique identifier of the registered staff member assigned to this item" },
+        "target_value": { "type": "string", "description": "Optional target numeric metric or success criteria" },
+        "achievement_status": { "type": "string", "description": "Target achievement status such as pending/completed" },
+        "schedule_day": { "type": "string", "description": "Day in weekly routine schedules (Saturday-Thursday)" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Modification timestamp" },
+        "updated_by": { "type": "string", "description": "Username details who modified the document last" }
+      },
+      "required": ["id", "title", "type", "content", "created_at"]
     }
   },
   "firestore": {
@@ -257,6 +278,10 @@
     "/chats/{chatId}": {
       "schema": "chat_message",
       "description": "Real-time communication chattering log documents"
+    },
+    "/office_plans/{planId}": {
+      "schema": "office_plan",
+      "description": "Office targets, plans, schedules, and weekly rosters"
     }
   }
 }

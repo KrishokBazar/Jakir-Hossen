@@ -316,6 +316,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /office_plans/{planId} {
+      allow read, write: if true;
+    }
+
     match /audit_logs/{logId} {
       allow read, write: if true;
     }
