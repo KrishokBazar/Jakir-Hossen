@@ -860,9 +860,31 @@ export default function Farmers({ user }: FarmersProps) {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-mono text-slate-800">{f.phone}</div>
+                          <div className="flex items-center gap-1.5 font-mono">
+                            <span className="font-semibold text-slate-800">{f.phone}</span>
+                            {f.phone && (
+                              <a
+                                href={`tel:${f.phone}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 rounded-full transition-all duration-150 border border-emerald-100 flex items-center justify-center shrink-0 cursor-pointer shadow-3xs"
+                                title={`সরাসরি কল দিন (Call First Num): ${f.phone}`}
+                              >
+                                <Phone className="w-3.5 h-3.5 fill-current" />
+                              </a>
+                            )}
+                          </div>
                           {f.secondary_phone && (
-                            <div className="text-[10px] text-slate-400 font-mono">২য়: {f.secondary_phone}</div>
+                            <div className="flex items-center gap-1.5 font-mono mt-1 text-[10px] text-slate-400">
+                              <span>২য়: {f.secondary_phone}</span>
+                              <a
+                                href={`tel:${f.secondary_phone}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1 bg-teal-50 hover:bg-teal-600 hover:text-white text-teal-600 rounded-full transition-all duration-150 border border-teal-100 flex items-center justify-center shrink-0 cursor-pointer"
+                                title={`২য় নম্বরে কল দিন (Call Second Num): ${f.secondary_phone}`}
+                              >
+                                <Phone className="w-2.5 h-2.5 fill-current" />
+                              </a>
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-slate-600 max-w-[150px] truncate" title={f.products_sold}>
@@ -1101,16 +1123,37 @@ export default function Farmers({ user }: FarmersProps) {
               <div className="grid grid-cols-2 gap-3.5 bg-slate-50/50 p-3 rounded-lg border border-slate-100 text-xs">
                 <div>
                   <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">মোবাইল (প্রধান/১ম)</span>
-                  <span className="font-bold font-mono text-slate-900 flex items-center gap-1 mt-0.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    {selectedFarmer.phone}
-                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5 font-mono">
+                    <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-slate-950">{selectedFarmer.phone}</span>
+                    {selectedFarmer.phone && (
+                      <a
+                        href={`tel:${selectedFarmer.phone}`}
+                        className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer shadow-3xs"
+                        title="সরাসরি কল দিন (Call)"
+                      >
+                        <Phone className="w-2.5 h-2.5 fill-current" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">মোবাইল (২য় নাম্বার)</span>
-                  <span className="font-bold font-mono text-slate-650 flex items-center gap-1 mt-0.5">
-                    {selectedFarmer.secondary_phone || <span className="text-slate-350 italic">দেওয়া নেই</span>}
-                  </span>
+                  {selectedFarmer.secondary_phone ? (
+                    <div className="flex items-center gap-1.5 mt-0.5 font-mono">
+                      <Phone className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                      <span className="font-bold text-slate-650">{selectedFarmer.secondary_phone}</span>
+                      <a
+                        href={`tel:${selectedFarmer.secondary_phone}`}
+                        className="p-1 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer shadow-3xs"
+                        title="২য় নম্বরে কল দিন (Call)"
+                      >
+                        <Phone className="w-2.5 h-2.5 fill-current" />
+                      </a>
+                    </div>
+                  ) : (
+                    <span className="block text-slate-350 italic mt-1 bg-slate-100/50 px-1.5 py-0.5 rounded w-fit">দেওয়া নেই</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">গ্রাম ও আবাসন</span>

@@ -459,7 +459,16 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                     <div className="space-y-1.5 text-xs text-slate-600 mb-4 pl-7.5">
                       <div className="flex items-center gap-1.5 font-mono">
                         <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-                        {op.phone}
+                        <span>{op.phone}</span>
+                        {op.phone && (
+                          <a
+                            href={`tel:${op.phone}`}
+                            className="p-1 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 rounded-full border border-emerald-150 flex items-center justify-center shrink-0 cursor-pointer shadow-3xs transition-all hover:scale-105"
+                            title={`সরাসরি কল দিন: ${op.phone}`}
+                          >
+                            <Smartphone className="w-3.5 h-3.5 fill-current" />
+                          </a>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 font-mono">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -596,7 +605,20 @@ export default function Operators({ onApprovalChange }: OperatorsProps) {
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 font-mono text-slate-650">{op.phone || op.email || 'Root Account'}</td>
+                      <td className="px-5 py-3.5 font-mono text-slate-650">
+                        <div className="flex items-center gap-1.5">
+                          <span>{op.phone || op.email || 'Root Account'}</span>
+                          {op.phone && (
+                            <a
+                              href={`tel:${op.phone}`}
+                              className="p-1 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 rounded-full border border-emerald-100 flex items-center justify-center shrink-0 cursor-pointer shadow-3xs hover:scale-105 active:scale-95 transition-all"
+                              title={`সরাসরি কল দিন: ${op.phone}`}
+                            >
+                              <Smartphone className="w-3.5 h-3.5 fill-current" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-5 py-3.5">
                         <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase ${
                           isSuperAdmin

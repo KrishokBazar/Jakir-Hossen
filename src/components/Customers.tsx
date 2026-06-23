@@ -522,10 +522,22 @@ export default function Customers({ user }: CustomersProps) {
             >
               <div>
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-bold text-slate-900 line-clamp-1">{cust.name}</h3>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-sm font-mono">
-                    ID: {cust.id.slice(-5)}
-                  </span>
+                  <div className="flex-1 min-w-0 pr-2">
+                    <h3 className="font-bold text-slate-900 line-clamp-1">{cust.name}</h3>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-sm font-mono inline-block mt-0.5">
+                      ID: {cust.id.slice(-5)}
+                    </span>
+                  </div>
+                  {cust.phone && (
+                    <a
+                      href={`tel:${cust.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-2 bg-emerald-50 hover:bg-emerald-600 group hover:text-white text-emerald-600 rounded-full transition-all duration-150 border border-emerald-100 shadow-xs flex items-center justify-center shrink-0 cursor-pointer hover:scale-105 active:scale-95"
+                      title="সরাসরি কল দিন (Call)"
+                    >
+                      <Phone className="w-3.5 h-3.5 fill-emerald-100 group-hover:fill-emerald-800 transition-colors" />
+                    </a>
+                  )}
                 </div>
 
                 <div className="space-y-1.5 text-xs text-slate-600 mb-4">
@@ -555,7 +567,7 @@ export default function Customers({ user }: CustomersProps) {
                   <span>Orders: <span className="font-mono font-bold text-slate-800">{cust.total_orders}</span></span>
                 </div>
                 <div className="flex items-center gap-1 font-mono">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-550" />
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-555" />
                   <span className="font-sans text-slate-500">Spent:</span>
                   <span className="font-bold text-emerald-600">৳{cust.total_spent.toLocaleString()}</span>
                 </div>
@@ -586,11 +598,23 @@ export default function Customers({ user }: CustomersProps) {
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="space-y-1">
                     <h4 className="text-lg font-bold text-white">{selectedCustomer.name}</h4>
-                    <p className="text-xs text-slate-300 font-mono flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5" /> {selectedCustomer.phone}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <p className="text-xs text-slate-300 font-mono flex items-center gap-1">
+                        <Phone className="w-3.5 h-3.5" /> {selectedCustomer.phone}
+                      </p>
+                      {selectedCustomer.phone && (
+                        <a
+                          href={`tel:${selectedCustomer.phone}`}
+                          className="inline-flex items-center gap-1 bg-emerald-550 hover:bg-emerald-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs border border-emerald-500/30"
+                          title="সরাসরি কল করুন (Call Now)"
+                        >
+                          <Phone className="w-3 h-3 fill-current text-white" />
+                          <span>সরাসরি কল দিন (Call)</span>
+                        </a>
+                      )}
+                    </div>
                     {selectedCustomer.address && (
-                      <p className="text-xs text-slate-400 flex items-center gap-1">
+                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
                         <MapPin className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.address}
                       </p>
                     )}

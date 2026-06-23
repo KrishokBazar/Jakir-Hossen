@@ -22,7 +22,8 @@ import {
   Receipt,
   FileCheck,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  Phone
 } from 'lucide-react';
 
 interface StaffCostsProps {
@@ -623,9 +624,20 @@ export default function StaffCosts({ user }: StaffCostsProps) {
                             </p>
                           </div>
                         </div>
-                        <span className="bg-bento-bg border border-bento-border text-slate-600 text-[9px] font-bold font-mono px-2 py-0.5 rounded-full select-none">
-                          {staff.phone}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0 select-none">
+                          <span className="bg-bento-bg border border-bento-border text-slate-600 text-xs font-bold font-mono px-2 py-0.5 rounded-full">
+                            {staff.phone}
+                          </span>
+                          {staff.phone && (
+                            <a
+                              href={`tel:${staff.phone}`}
+                              className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-full border border-emerald-100 flex items-center justify-center shrink-0 cursor-pointer shadow-3xs transition-all hover:scale-110"
+                              title={`${staff.name} কে সরাসরি কল দিন: ${staff.phone}`}
+                            >
+                              <Phone className="w-3.5 h-3.5 fill-current/10" />
+                            </a>
+                          )}
+                        </div>
                       </div>
 
                       {/* Role specific view boundary: Admin vs. Operator */}
