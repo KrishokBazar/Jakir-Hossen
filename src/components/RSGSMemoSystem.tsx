@@ -9,7 +9,7 @@ import {
   FileText, Plus, Search, Printer, Trash2, Edit, PlusCircle, 
   User, BookOpen, Briefcase, Clock, DollarSign, CheckCircle, 
   Calendar, AlertCircle, MapPin, Building2, Eye, X, RefreshCw, Download, Phone,
-  Send, Share2, MessageCircle, ShieldCheck
+  Send, Share2, MessageCircle, ShieldCheck, Copy, Link
 } from 'lucide-react';
 
 interface RSGSMemoSystemProps {
@@ -45,6 +45,9 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [shareWhatsAppNumber, setShareWhatsAppNumber] = useState('');
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [autoSendOnSave, setAutoSendOnSave] = useState(false);
+  const [pendingAutoSend, setPendingAutoSend] = useState<RSGSMemo | null>(null);
 
   // Repeat / Recurring states
   const [isRecurring, setIsRecurring] = useState(false);
@@ -156,6 +159,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
     setIsRecurring(false);
     setRecurringInterval('monthly');
     setRecurringDay(1);
+    setAutoSendOnSave(false);
     setShowAddModal(true);
   };
 
@@ -190,6 +194,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
     setIsRecurring(memo.is_recurring || false);
     setRecurringInterval(memo.recurring_interval || 'monthly');
     setRecurringDay(memo.recurring_day !== undefined ? memo.recurring_day : 1);
+    setAutoSendOnSave(false);
     setShowAddModal(true);
   };
 
@@ -358,6 +363,18 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
     checkAndProcess();
   }, [memos, loading]);
 
+  // Trigger auto-send WhatsApp when a pending memo is set, and the print modal with the target ID is active
+  useEffect(() => {
+    if (pendingAutoSend && selectedMemo && selectedMemo.id === pendingAutoSend.id && showPrintModal) {
+      // Short delay to ensure document/canvas content has fully updated and rendered
+      const timer = setTimeout(() => {
+        handleSendToWhatsApp(pendingAutoSend);
+        setPendingAutoSend(null);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingAutoSend, selectedMemo, showPrintModal]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -401,6 +418,21 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         };
         await dbService.updateRSGSMemo(editingId, updates);
         showNotification('মেমো আপডেট সফল', 'মেমোটি সফলভাবে আপডেট করা হয়েছে।', 'success');
+
+        if (autoSendOnSave) {
+          const updatedMemo: RSGSMemo = {
+            ...oldMemo,
+            ...updates,
+            id: editingId,
+            created_at: oldMemo?.created_at || new Date().toISOString(),
+            created_by_id: oldMemo?.created_by_id || user.id,
+            created_by_name: oldMemo?.created_by_name || user.name,
+          } as RSGSMemo;
+          setSelectedMemo(updatedMemo);
+          setShareWhatsAppNumber(updatedMemo.phone || '');
+          setShowPrintModal(true);
+          setPendingAutoSend(updatedMemo);
+        }
       } else {
         const nextId = generateInvoiceNumber(memos);
         const newMemo: RSGSMemo = {
@@ -427,6 +459,13 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         };
         await dbService.addRSGSMemo(newMemo);
         showNotification('মেমো তৈরি সফল', 'নতুন মেমোটি সফলভাবে যুক্ত করা হয়েছে!', 'success');
+
+        if (autoSendOnSave) {
+          setSelectedMemo(newMemo);
+          setShareWhatsAppNumber(newMemo.phone || '');
+          setShowPrintModal(true);
+          setPendingAutoSend(newMemo);
+        }
       }
       setShowAddModal(false);
     } catch (error) {
@@ -508,6 +547,21 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
     URL.revokeObjectURL(url);
     
     showNotification('ডাউনলোড সফল', 'পিডিএফ মেমোটি সফলভাবে ডাউনলোড করা হয়েছে।', 'success');
+  };
+
+  // Copies the online verification link to clipboard
+  const handleCopyVerificationLink = (memoId: string) => {
+    const link = `${window.location.origin}?verify=${memoId}`;
+    navigator.clipboard.writeText(link)
+      .then(() => {
+        setCopiedLinkId(memoId);
+        showNotification('লিঙ্ক কপি হয়েছে', 'ভেরিফিকেশন লিঙ্কটি ক্লিপবোর্ডে কপি করা হয়েছে।', 'success');
+        setTimeout(() => setCopiedLinkId(null), 2500);
+      })
+      .catch((err) => {
+        console.error('Failed to copy link: ', err);
+        showNotification('ত্রুটি', 'লিঙ্ক কপি করা যায়নি।', 'danger');
+      });
   };
 
   // Sends PDF details and triggers direct WhatsApp redirect
@@ -1406,6 +1460,29 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
                 )}
               </div>
 
+              {/* Auto-send to WhatsApp on save Option */}
+              <div className="bg-emerald-50/40 p-4.5 rounded-xl border border-emerald-100/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <label className="block text-xs font-black text-slate-800">
+                      সংরক্ষণের পর হোয়াটসঅ্যাপে পাঠান (Auto-send to WhatsApp on save)
+                    </label>
+                    <p className="text-[10px] text-slate-500 font-semibold">
+                      মেমোটি সফলভাবে তৈরি বা আপডেট হওয়ার পর স্বয়ংক্রিয়ভাবে পিডিএফ রশিদ ডাউনলোড করে গ্রাহকের হোয়াটসঅ্যাপে রিডাইরেক্ট করতে এটি চালু করুন।
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={autoSendOnSave}
+                      onChange={(e) => setAutoSendOnSave(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-250 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+
               {/* Footer Buttons */}
               <div className="bg-slate-50 -mx-6 -mb-6 px-6 py-4.5 border-t border-slate-100 flex gap-2.5">
                 <button
@@ -1626,6 +1703,26 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
                       <span>রসিদ ভেরিফিকেশন কিউআর</span>
                     </p>
                     <p className="text-[7px] text-slate-400 font-mono mt-0.5 font-bold uppercase">Scan to Verify Invoice</p>
+
+                    {/* Copy Verification Link Button (Hidden in Print/PDF generation) */}
+                    <button
+                      onClick={() => handleCopyVerificationLink(selectedMemo.id)}
+                      data-html2canvas-ignore="true"
+                      className="print:hidden mt-2 px-2.5 py-1 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold rounded-md text-[8.5px] cursor-pointer flex items-center gap-1 transition-all border border-slate-200 shadow-3xs hover:shadow-2xs select-none hover:text-indigo-600"
+                      title="ভেরিফিকেশন লিঙ্ক কপি করুন (Copy Verification Link)"
+                    >
+                      {copiedLinkId === selectedMemo.id ? (
+                        <>
+                          <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                          <span className="text-emerald-600 font-black">লিঙ্ক কপি হয়েছে!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-slate-400 shrink-0 animate-pulse" />
+                          <span>লিঙ্ক কপি করুন</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 text-center">

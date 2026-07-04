@@ -13,6 +13,8 @@ import StaffCosts from './components/StaffCosts';
 import Farmers from './components/Farmers';
 import DailyOperationsLog from './components/DailyOperationsLog';
 import LiveChat from './components/LiveChat';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import CofounderWorkspace from './components/CofounderWorkspace';
 import OfficeWorkspace from './components/OfficeWorkspace';
 import RSGSMemoSystem from './components/RSGSMemoSystem';
@@ -47,7 +49,10 @@ import {
   Cloud,
   Check,
   RefreshCw,
-  Building2
+  Building2,
+  Download,
+  AlertCircle,
+  Printer
 } from 'lucide-react';
 
 export default function App() {
@@ -64,6 +69,72 @@ export default function App() {
   const [verifiedMemo, setVerifiedMemo] = useState<RSGSMemo | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [verificationAttempted, setVerificationAttempted] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [pdfDownloadMessage, setPdfDownloadMessage] = useState<{ type: 'success' | 'error' | 'info' | null, text: string }>({ type: null, text: '' });
+
+  // Downloads the invoice PDF to the user's device from the verification portal
+  const handleDownloadVerifiedPDF = async () => {
+    if (!verifiedMemo) return;
+    
+    const element = document.getElementById('verified-invoice-pdf-area');
+    if (!element) {
+      setPdfDownloadMessage({ type: 'error', text: 'রসিদ ভিউ পাওয়া যায়নি।' });
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+    setPdfDownloadMessage({ type: 'info', text: 'অফিশিয়াল পিডিএফ রসিদ প্রস্তুত করা হচ্ছে...' });
+    try {
+      // Small delay to ensure any dynamic assets/images are fully rendered
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      const canvas = await html2canvas(element, {
+        scale: 2, // 2x density for extra high class crispness
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 size width in mm
+      const pageHeight = 297; // A4 size height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Calculate centering offset to make it look exactly like an official document centered on A4 sheet
+      let yOffset = 0;
+      if (imgHeight < pageHeight) {
+        yOffset = (pageHeight - imgHeight) / 2;
+      }
+
+      pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, imgHeight);
+      
+      const pdfBlob = pdf.output('blob');
+      if (pdfBlob) {
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `RSGS_Invoice_${verifiedMemo.id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        setPdfDownloadMessage({ type: 'success', text: 'পিডিএফ রসিদ সফলভাবে ডাউনলোড হয়েছে।' });
+        setTimeout(() => setPdfDownloadMessage({ type: null, text: '' }), 4500);
+      }
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setPdfDownloadMessage({ type: 'error', text: 'পিডিএফ ফাইল তৈরি করতে ব্যর্থ হয়েছে।' });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   // Parse URL query parameter on load for invoice verification
   useEffect(() => {
@@ -296,6 +367,60 @@ export default function App() {
           ) : verificationAttempted && verifiedMemo ? (
             // Invoice verified successfully!
             <div className="space-y-5">
+              {/* Media print custom CSS styling injection for verification portal */}
+              <style>{`
+                @media print {
+                  /* Set absolute pristine print background */
+                  body {
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    font-size: 11pt;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                  }
+                  
+                  /* Hide all elements by default on paper */
+                  body * {
+                    visibility: hidden !important;
+                  }
+
+                  /* Force display none on non-print items like buttons, back link, etc. */
+                  button,
+                  .no-print,
+                  header,
+                  nav,
+                  footer {
+                    display: none !important;
+                  }
+
+                  /* Overwrite visibility for ONLY the printable verified invoice wrapper and its entire tree */
+                  #verified-invoice-pdf-area, 
+                  #verified-invoice-pdf-area * {
+                    visibility: visible !important;
+                  }
+
+                  /* Position the invoice beautifully at the absolute top-left corner of the page */
+                  #verified-invoice-pdf-area {
+                    display: block !important;
+                    position: absolute !important;
+                    left: 0 !important;
+                    top: 0 !important;
+                    width: 100% !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    background: #ffffff !important;
+                  }
+
+                  /* Set precise paper margins and dimension size rules */
+                  @page {
+                    size: A4 portrait;
+                    margin: 15mm 15mm 15mm 15mm;
+                  }
+                }
+              `}</style>
+
               {/* Verified Badge */}
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-start gap-3">
                 <span className="p-1.5 bg-emerald-500 text-slate-950 rounded-lg shrink-0 mt-0.5">
@@ -363,6 +488,56 @@ export default function App() {
                     <span>Active Record</span>
                   </span>
                 </div>
+              </div>
+
+              {/* PDF & Direct Print buttons */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={handleDownloadVerifiedPDF}
+                    disabled={isGeneratingPDF}
+                    className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-slate-850 ${
+                      isGeneratingPDF 
+                        ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed w-full'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.98] w-full'
+                    }`}
+                  >
+                    {isGeneratingPDF ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>পিডিএফ তৈরি হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>পিডিএফ ডাউনলোড</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => window.print()}
+                    disabled={isGeneratingPDF}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-slate-700 bg-slate-800 hover:bg-slate-750 text-slate-200 active:scale-[0.98] hover:text-indigo-400"
+                  >
+                    <Printer className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <span>সরাসরি প্রিন্ট করুন (Print)</span>
+                  </button>
+                </div>
+
+                {/* Status Messages for PDF download */}
+                {pdfDownloadMessage.type && (
+                  <div className={`p-2.5 rounded-lg border text-[10px] font-bold flex items-center gap-1.5 animate-fade-in ${
+                    pdfDownloadMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                    pdfDownloadMessage.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+                    'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
+                  }`}>
+                    {pdfDownloadMessage.type === 'success' && <Check className="w-3.5 h-3.5 shrink-0 text-emerald-500" />}
+                    {pdfDownloadMessage.type === 'error' && <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />}
+                    {pdfDownloadMessage.type === 'info' && <RefreshCw className="w-3.5 h-3.5 shrink-0 text-indigo-400 animate-spin" />}
+                    <span>{pdfDownloadMessage.text}</span>
+                  </div>
+                )}
               </div>
 
               {/* Institution footer card */}
@@ -437,6 +612,182 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Offscreen element for generating PDF */}
+        {verifiedMemo && (
+          <div className="absolute left-[-9999px] top-[-9999px]" style={{ width: '800px' }}>
+            <div 
+              id="verified-invoice-pdf-area" 
+              className="bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden"
+              style={{ width: '800px' }}
+            >
+              {/* Subtle company-branded semi-transparent watermark */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-[0.045]">
+                <div className="transform -rotate-[35deg] text-center space-y-2">
+                  <p className="text-6xl font-black tracking-widest uppercase text-slate-900 font-sans">
+                    RSGS GLOBAL
+                  </p>
+                  <p className="text-xl font-extrabold tracking-wider uppercase text-indigo-900 font-sans">
+                    OFFICIAL INVOICE
+                  </p>
+                  <p className="text-[10px] font-mono font-black tracking-widest text-slate-700">
+                    SECURE SYSTEM VERIFIED • NON-TAMPERABLE
+                  </p>
+                </div>
+              </div>
+
+              {/* Invoice Stamp Header */}
+              <div className="flex justify-between items-start border-b-2 border-slate-200 pb-6">
+                {/* Company Left Panel */}
+                <div className="space-y-1.5">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-1">
+                    <span>RSGS Global Solution Group</span>
+                  </h2>
+                  <p className="text-[10px] text-slate-500 font-extrabold tracking-widest uppercase">Digital Agency & Tech Training Institute</p>
+                  <div className="text-[10px] text-slate-450 leading-relaxed font-semibold">
+                    <p>সৈয়দ প্লাজা (২য় তলা), রাজ্জাক প্লাজা সংলগ্ন, ঢাকা (Syed Plaza 2nd Floor, Adjacent to Razzak Plaza, Dhaka)</p>
+                    <p>হোয়াটসঅ্যাপ / মোবাইল: ০১৭৪৮৫২৪৩৮১ (WhatsApp / Cell: +8801748524381)</p>
+                    <p>ইমেইল: support@rsgs.global | ওয়েব: www.rsgs.global</p>
+                  </div>
+                </div>
+
+                {/* Title Right Panel */}
+                <div className="text-right space-y-1">
+                  <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-extrabold rounded-md uppercase tracking-wider">
+                    {verifiedMemo.memo_type === 'customer' ? 'Customer Memo' : 'Student Memo'}
+                  </span>
+                  <h1 className="text-xl font-black text-slate-900 tracking-tight mt-1.5">মানি রিসিট / মেমো</h1>
+                  <p className="text-xs font-bold text-indigo-600 font-mono">Invoice NO: {verifiedMemo.id}</p>
+                  <p className="text-[10px] text-slate-450 font-bold">
+                    Date: {new Date(verifiedMemo.created_at).toLocaleDateString('bn-BD')} ({new Date(verifiedMemo.created_at).toLocaleDateString('en-US')})
+                  </p>
+                </div>
+              </div>
+
+              {/* Client Metadata details */}
+              <div className="grid grid-cols-2 gap-6 my-6 text-xs bg-slate-50 p-4.5 rounded-xl border border-slate-100">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">বিল প্রাপক (Invoiced To)</p>
+                  <p className="text-sm font-black text-slate-900">{verifiedMemo.client_name}</p>
+                  {verifiedMemo.memo_type === 'student' && verifiedMemo.student_id && (
+                    <div className="mt-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        ID / Roll: {verifiedMemo.student_id}
+                      </span>
+                    </div>
+                  )}
+                  {verifiedMemo.phone && <p className="font-mono text-slate-600 font-semibold">Phone: {verifiedMemo.phone}</p>}
+                  {verifiedMemo.address && <p className="text-slate-500 font-semibold">Address: {verifiedMemo.address}</p>}
+                </div>
+                
+                <div className="space-y-1.5 text-right">
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">প্রস্তুতকারক (Issued By)</p>
+                  <p className="text-sm font-black text-slate-900">RSGS Billing Portal</p>
+                  <p className="text-slate-600 font-semibold">Operator: {verifiedMemo.created_by_name}</p>
+                  <p className="text-slate-500 text-[10px] font-bold">সিস্টেম দ্বারা অনুমোদিত এবং সিঙ্কড।</p>
+                </div>
+              </div>
+
+              {/* Services/Courses Table breakdown */}
+              <div className="my-6">
+                <p className="text-[10px] text-slate-450 font-extrabold uppercase tracking-widest mb-2.5">অর্ডার বিবরণ (Service / Course Specifications)</p>
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                      <th className="py-2.5 px-3">ক্রমিক (Item)</th>
+                      <th className="py-2.5 px-3">সার্ভিস / কোর্সের বিবরণ</th>
+                      <th className="py-2.5 px-3 text-center">স্থায়িত্ব (Duration)</th>
+                      <th className="py-2.5 px-3 text-right">মূল্য (Price)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr>
+                      <td className="py-3 px-3 font-mono font-bold">01</td>
+                      <td className="py-3 px-3">
+                        <p className="font-bold text-slate-900">{verifiedMemo.service_type}</p>
+                        {verifiedMemo.notes && <p className="text-[10px] text-slate-450 mt-1 leading-relaxed max-w-md italic">{verifiedMemo.notes}</p>}
+                      </td>
+                      <td className="py-3 px-3 text-center font-bold text-slate-700">{verifiedMemo.duration}</td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">৳{verifiedMemo.total_amount.toLocaleString('bn-BD')}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Invoice Summary calculation block */}
+              <div className="border-t border-slate-200 pt-5 flex justify-end">
+                <div className="w-64 space-y-2.5 text-xs">
+                  <div className="flex justify-between font-semibold text-slate-600">
+                    <span>মোট ফি (Total Amount):</span>
+                    <span className="font-mono">৳{verifiedMemo.total_amount.toLocaleString('bn-BD')}</span>
+                  </div>
+                  
+                  <div className="flex justify-between font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                    <span>অগ্রিম প্রদান (Advanced Paid):</span>
+                    <span className="font-mono">৳{verifiedMemo.advanced_amount.toLocaleString('bn-BD')}</span>
+                  </div>
+
+                  <div className={`flex justify-between font-extrabold px-2 py-1 rounded ${
+                    verifiedMemo.due_amount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    <span>বকেয়া পরিমাণ (Remaining Due):</span>
+                    <span className="font-mono">৳{verifiedMemo.due_amount.toLocaleString('bn-BD')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Declaration terms / Signatures */}
+              <div className="mt-12 pt-6 border-t border-slate-100 grid grid-cols-3 gap-6 text-[9px] text-slate-450 leading-relaxed">
+                <div>
+                  <p className="font-extrabold uppercase tracking-wider text-slate-500 mb-1">শর্তাবলী / Terms & Conditions</p>
+                  <p>১. অগ্রিম প্রদানকৃত ফি কোনো অবস্থাতেই অফেরতযোগ্য।</p>
+                  <p>২. বকেয়া পরিশোধ সাপেক্ষে পূর্ণ সেবা চালু থাকবে।</p>
+                  <p>৩. এই রসিদটি ডিজিটাল সার্ভার দ্বারা তৈরি এবং সার্ভার থেকে সত্যতা যাচাইযোগ্য।</p>
+                </div>
+
+                {/* Verification QR Code Column */}
+                <div className="flex flex-col items-center text-center justify-center border-x border-slate-100 px-2 bg-slate-50/50 rounded-lg">
+                  <div className="bg-white p-1 border border-slate-200 rounded-md shadow-3xs">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?verify=${verifiedMemo.id}`)}`}
+                      alt="Verification QR Code"
+                      className="w-16 h-16 object-contain"
+                      crossOrigin="anonymous"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[8px] font-black text-indigo-700 tracking-tight flex items-center gap-0.5">
+                    <span>রসিদ ভেরিফিকেশন কিউআর</span>
+                  </p>
+                  <p className="text-[7px] text-slate-400 font-mono mt-0.5 font-bold uppercase">Scan to Verify Invoice</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div className="flex flex-col items-center justify-end space-y-1">
+                    {verifiedMemo.signature_data ? (
+                      <img 
+                        src={verifiedMemo.signature_data} 
+                        alt="Customer Signature" 
+                        className="max-h-12 max-w-[120px] object-contain border border-slate-100 rounded p-0.5 bg-white mb-1"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="h-12 w-28 border-b border-slate-200 border-dashed" />
+                    )}
+                    <p className="text-[10px] font-bold text-slate-600">গ্রাহক / ছাত্রের স্বাক্ষর</p>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-end space-y-1">
+                    <div className="h-12 w-28 border-b border-slate-200 border-dashed flex items-end justify-center pb-1">
+                      <span className="text-[8px] font-mono text-slate-300 font-bold">Authorized</span>
+                    </div>
+                    <p className="text-[10px] font-bold text-slate-600">কর্তৃপক্ষের স্বাক্ষর</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
