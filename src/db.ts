@@ -17,7 +17,7 @@ import {
   where, 
   orderBy, 
   limit,
-  onSnapshot,
+  onSnapshot as firebaseOnSnapshot,
   DocumentReference
 } from 'firebase/firestore';
 import { queueOfflineMutation, registerBackgroundSync, setCachedData, getCachedData } from './utils/offlineSync';
@@ -82,7 +82,56 @@ async function deleteDoc(docRef: DocumentReference<any, any>) {
     }
   }
 }
-import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup, OfficePlan } from './types';
+
+// To track active subscriptions for manual force-syncing
+interface ActiveSubscription {
+  ref: any; // Query, CollectionReference, or DocumentReference
+  onNext: (snapshot: any) => void;
+  onError?: (error: any) => void;
+  isDocument: boolean;
+}
+
+const activeSubscriptions = new Set<ActiveSubscription>();
+
+function onSnapshot(
+  ref: any,
+  onNext: (snapshot: any) => void,
+  onError?: (error: any) => void
+): () => void {
+  const isDocument = ref.type === 'document' || (ref.path && ref.path.split('/').filter(Boolean).length % 2 === 0);
+  const subRecord: ActiveSubscription = {
+    ref,
+    onNext,
+    onError,
+    isDocument
+  };
+  activeSubscriptions.add(subRecord);
+
+  let isFirst = true;
+
+  const unsubscribe = firebaseOnSnapshot(ref, (snap) => {
+    const isManualSyncEnabled = localStorage.getItem('kb_manual_sync_enabled') === 'true';
+    if (isManualSyncEnabled) {
+      if (isFirst) {
+        isFirst = false;
+        onNext(snap);
+      } else {
+        console.log("Real-time update ignored because manual sync mode is enabled.", ref);
+      }
+    } else {
+      onNext(snap);
+    }
+  }, (error) => {
+    if (onError) onError(error);
+  });
+
+  return () => {
+    activeSubscriptions.delete(subRecord);
+    unsubscribe();
+  };
+}
+
+import { Profile, Customer, Order, CostSettings, DailyStat, Staff, StaffPayment, Expense, Farmer, FarmerPayment, FarmerSale, DailyLog, AuditLog, ChatMessage, CofounderNote, ChatGroup, OfficePlan, RSGSMemo } from './types';
 
 // Supabase fallback modes (disabled to prefer Firebase)
 export const isSupabaseConfigured = (): boolean => {
@@ -216,6 +265,27 @@ export async function recalculateCustomerStats(customerId: string): Promise<void
 }
 
 export const dbService = {
+  // Force manual sync on all active listeners
+  async forceSyncAllActive(): Promise<void> {
+    const promises = Array.from(activeSubscriptions).map(async (sub) => {
+      try {
+        if (sub.isDocument) {
+          const snap = await getDoc(sub.ref);
+          sub.onNext(snap);
+        } else {
+          const snap = await getDocs(sub.ref);
+          sub.onNext(snap);
+        }
+      } catch (err) {
+        console.error("Manual sync failed for subscription:", sub.ref, err);
+        if (sub.onError) {
+          sub.onError(err);
+        }
+      }
+    });
+    await Promise.all(promises);
+  },
+
   // Authentication via Firestore profiles
   async signIn(loginId: string, password: string): Promise<{ user: Profile; error?: string }> {
     await seedDatabaseIfNeeded();
@@ -1857,7 +1927,65 @@ export const dbService = {
       console.error("Error subscribing to office plans:", error);
       if (onError) onError(error);
     });
-  }
+  },
 
+  async getRSGSMemo(id: string): Promise<RSGSMemo | null> {
+    try {
+      const docRef = doc(db, 'rsgs_memos', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return snap.data() as RSGSMemo;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `rsgs_memos/${id}`);
+      return null;
+    }
+  },
+
+  async addRSGSMemo(memo: RSGSMemo): Promise<void> {
+    try {
+      const docRef = doc(db, 'rsgs_memos', memo.id);
+      await setDoc(docRef, memo);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `rsgs_memos/${memo.id}`);
+      throw error;
+    }
+  },
+
+  async updateRSGSMemo(id: string, updates: Partial<RSGSMemo>): Promise<void> {
+    try {
+      const docRef = doc(db, 'rsgs_memos', id);
+      await updateDoc(docRef, updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `rsgs_memos/${id}`);
+      throw error;
+    }
+  },
+
+  async deleteRSGSMemo(id: string): Promise<void> {
+    try {
+      const docRef = doc(db, 'rsgs_memos', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `rsgs_memos/${id}`);
+      throw error;
+    }
+  },
+
+  subscribeRSGSMemos(onUpdate: (memos: RSGSMemo[]) => void, onError?: (err: any) => void): () => void {
+    const q = collection(db, 'rsgs_memos');
+    return onSnapshot(q, (snap) => {
+      const list: RSGSMemo[] = [];
+      snap.forEach((docRef) => {
+        list.push(docRef.data() as RSGSMemo);
+      });
+      const sorted = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      onUpdate(sorted);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'rsgs_memos');
+      if (onError) onError(error);
+    });
+  }
 
 };

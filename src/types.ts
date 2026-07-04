@@ -222,5 +222,29 @@ export interface OfficePlan {
   updated_by?: string;
 }
 
+export interface RSGSMemo {
+  id: string;
+  memo_type: 'customer' | 'student';
+  client_name: string;
+  phone: string;
+  address?: string;
+  service_type: string; // Web Development, App Development, Social Media Marketing, or Course
+  duration: string; // e.g., 2 Months, 3 Months, 6 Months, 1 Year for students, 7 Days, 15 Days, 1 Month for customers
+  total_amount: number;
+  advanced_amount: number;
+  due_amount: number;
+  created_at: string;
+  created_by_id: string;
+  created_by_name: string;
+  notes?: string;
+  is_recurring?: boolean;
+  recurring_interval?: 'weekly' | 'monthly';
+  recurring_day?: number;
+  last_recurred_at?: string | null;
+  student_id?: string;
+  signature_data?: string;
+}
+
+
 
 

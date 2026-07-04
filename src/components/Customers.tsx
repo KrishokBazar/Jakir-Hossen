@@ -579,7 +579,7 @@ export default function Customers({ user }: CustomersProps) {
 
       {/* Customer Record Detail View Drawer (Modal) */}
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-xs flex justify-end z-50">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm flex justify-end z-50">
           <div className="w-full max-w-2xl bg-white h-screen overflow-y-auto shadow-2xl p-6 flex flex-col justify-between">
             <div>
               {/* Drawer Title Bar */}
@@ -770,7 +770,7 @@ export default function Customers({ user }: CustomersProps) {
 
       {/* Manual Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-xs flex justify-center items-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <form onSubmit={handleManualAddCustomer} className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 mb-4">
               <h3 className="font-bold text-slate-900">নতুন গ্রাহক তৈরি (Manual Add Customer)</h3>
@@ -843,7 +843,7 @@ export default function Customers({ user }: CustomersProps) {
 
       {/* Profile Modification Editor (Admin Only Modal) */}
       {editingCustomer && (
-        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-xs flex justify-center items-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <form onSubmit={handleEditSubmit} className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 mb-4">
               <h3 className="font-bold text-slate-900">সম্পাদনা (Edit Customer Record)</h3>
@@ -911,7 +911,7 @@ export default function Customers({ user }: CustomersProps) {
 
       {/* Duplicate Merging Interface Modal (Admin Only) */}
       {mergingSource && (
-        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-xs flex justify-center items-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <form onSubmit={handleMergeProfiles} className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 mb-4">
               <h3 className="font-bold text-slate-900 flex items-center gap-1">
@@ -999,7 +999,7 @@ export default function Customers({ user }: CustomersProps) {
       {/* Zoomed Photo Lightbox Modal */}
       {zoomedOrderPhotoUrl && (
         <div 
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm select-none"
           onClick={() => setZoomedOrderPhotoUrl(null)}
         >
           <div 

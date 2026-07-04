@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { NotificationProvider } from './components/NotificationContext';
+import { WhatsAppNotificationProvider } from './components/WhatsAppNotificationContext';
 import './index.css';
 
 // Register Service Worker for PWA on all devices
@@ -20,7 +21,9 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NotificationProvider>
-      <App />
+      <WhatsAppNotificationProvider>
+        <App />
+      </WhatsAppNotificationProvider>
     </NotificationProvider>
   </StrictMode>,
 );

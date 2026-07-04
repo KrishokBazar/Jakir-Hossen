@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { dbService, isSupabaseConfigured } from './db';
-import { Profile } from './types';
+import { Profile, RSGSMemo } from './types';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrderForm from './components/OrderForm';
@@ -15,6 +15,7 @@ import DailyOperationsLog from './components/DailyOperationsLog';
 import LiveChat from './components/LiveChat';
 import CofounderWorkspace from './components/CofounderWorkspace';
 import OfficeWorkspace from './components/OfficeWorkspace';
+import RSGSMemoSystem from './components/RSGSMemoSystem';
 import FloatingChat from './components/FloatingChat';
 import AppVersionChecker from './components/AppVersionChecker';
 import NetworkStatusNotifier from './components/NetworkStatusNotifier';
@@ -45,7 +46,8 @@ import {
   WifiOff,
   Cloud,
   Check,
-  RefreshCw
+  RefreshCw,
+  Building2
 } from 'lucide-react';
 
 export default function App() {
@@ -56,6 +58,33 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
+
+  // Invoice verification portal states
+  const [verifyInvoiceId, setVerifyInvoiceId] = useState<string | null>(null);
+  const [verifiedMemo, setVerifiedMemo] = useState<RSGSMemo | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationAttempted, setVerificationAttempted] = useState(false);
+
+  // Parse URL query parameter on load for invoice verification
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const verifyId = params.get('verify');
+    if (verifyId) {
+      setVerifyInvoiceId(verifyId);
+      setVerificationLoading(true);
+      dbService.getRSGSMemo(verifyId)
+        .then((memo) => {
+          setVerifiedMemo(memo);
+          setVerificationLoading(false);
+          setVerificationAttempted(true);
+        })
+        .catch((err) => {
+          console.error("Verification error:", err);
+          setVerificationLoading(false);
+          setVerificationAttempted(true);
+        });
+    }
+  }, []);
 
   // Global Intercept and Modal Hook for WhatsApp redirections (Ensures non-disruptive confirmation)
   useEffect(() => {
@@ -237,6 +266,181 @@ export default function App() {
     setPendingOperatorsCount(count);
   };
 
+  // Render Public Invoice Verification Portal
+  if (verifyInvoiceId) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans select-none selection:bg-indigo-500/30">
+        {/* Abstract futuristic glowing backgrounds */}
+        <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[250px] h-[250px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none" />
+
+        <div className="w-full max-w-lg bg-slate-950/60 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 relative animate-fade-in-down">
+          {/* Header */}
+          <div className="text-center space-y-2 pb-5 border-b border-slate-800">
+            <div className="inline-flex items-center justify-center p-3 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20 mb-1">
+              <ShieldCheck className="w-8 h-8 animate-pulse" />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center justify-center gap-1.5">
+              <span>RSGS Verification Portal</span>
+            </h1>
+            <p className="text-[10px] text-slate-450 font-extrabold uppercase tracking-widest">Official Document Authentication System</p>
+          </div>
+
+          {/* Verification Process States */}
+          {verificationLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+              <RefreshCw className="w-10 h-10 text-indigo-500 animate-spin" />
+              <p className="text-xs font-bold text-slate-400 animate-pulse">ডাটাবেজ থেকে রসিদ যাচাই করা হচ্ছে...</p>
+              <p className="text-[9px] text-slate-500 font-mono">Loading records securely from firestore...</p>
+            </div>
+          ) : verificationAttempted && verifiedMemo ? (
+            // Invoice verified successfully!
+            <div className="space-y-5">
+              {/* Verified Badge */}
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-start gap-3">
+                <span className="p-1.5 bg-emerald-500 text-slate-950 rounded-lg shrink-0 mt-0.5">
+                  <Check className="w-4 h-4 font-black" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-black text-emerald-400">মেমোটি সফলভাবে যাচাই করা হয়েছে!</h4>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">এই মানি রিসিটটি RSGS Global Solution Group-এর অফিশিয়াল ডাটাবেজের সাথে হুবহু মিলেছে।</p>
+                </div>
+              </div>
+
+              {/* Memo Verified Details Grid */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">মেমো নং / Invoice No</span>
+                    <span className="font-mono font-bold text-indigo-400 text-sm mt-0.5 block">{verifiedMemo.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">ইস্যুর তারিখ / Date</span>
+                    <span className="font-bold text-white text-sm mt-0.5 block">
+                      {new Date(verifiedMemo.created_at).toLocaleDateString('bn-BD')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800 pt-3">
+                  <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">গ্রাহক / ছাত্রের নাম (Client Name)</span>
+                  <span className="font-black text-white text-sm mt-0.5 block">{verifiedMemo.client_name}</span>
+                  {verifiedMemo.student_id && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[9px] font-bold mt-1.5 font-mono">
+                      Student ID: {verifiedMemo.student_id}
+                    </span>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-800 pt-3">
+                  <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">সেবা / কোর্সের বিবরণ (Service)</span>
+                  <span className="font-bold text-slate-350 text-xs mt-0.5 block">{verifiedMemo.service_type}</span>
+                </div>
+
+                <div className="border-t border-slate-800 pt-3 grid grid-cols-3 gap-2.5 text-center">
+                  <div className="bg-slate-950/40 p-2 rounded-lg border border-slate-800/60">
+                    <span className="text-[8px] font-extrabold text-slate-500 uppercase block">মোট ফি (Total)</span>
+                    <span className="font-mono font-extrabold text-white text-xs mt-0.5 block">৳{verifiedMemo.total_amount.toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className="bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">
+                    <span className="text-[8px] font-extrabold text-emerald-500/80 uppercase block">পরিশোধিত (Paid)</span>
+                    <span className="font-mono font-extrabold text-emerald-400 text-xs mt-0.5 block">৳{verifiedMemo.advanced_amount.toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className={`p-2 rounded-lg border ${
+                    verifiedMemo.due_amount > 0 ? 'bg-rose-500/5 border-rose-500/10' : 'bg-emerald-500/5 border-emerald-500/10'
+                  }`}>
+                    <span className={`text-[8px] font-extrabold uppercase block ${verifiedMemo.due_amount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>বকেয়া (Due)</span>
+                    <span className={`font-mono font-extrabold text-xs mt-0.5 block ${verifiedMemo.due_amount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      ৳{verifiedMemo.due_amount.toLocaleString('bn-BD')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800 pt-3 flex items-center justify-between text-[10px]">
+                  <span className="text-slate-500 font-semibold">অপারেটর: {verifiedMemo.created_by_name}</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded-full text-[9px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Active Record</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Institution footer card */}
+              <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-xl text-[10px] text-slate-450 leading-relaxed font-semibold">
+                <p className="font-extrabold text-white mb-1 flex items-center gap-1.5 text-[11px]">
+                  <Building2 className="w-4 h-4 text-indigo-400" />
+                  <span>RSGS Global Solution Group</span>
+                </p>
+                <p>সৈয়দ প্লাজা (২য় তলা), রাজ্জাক প্লাজা সংলগ্ন, ঢাকা।</p>
+                <p>হোয়াটসঅ্যাপ: ০১৭৪৮৫২৪৩৮১ | ওয়েব: www.rsgs.global</p>
+              </div>
+            </div>
+          ) : (
+            // Memo verification failed!
+            <div className="space-y-5">
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 flex items-start gap-3">
+                <span className="p-1.5 bg-rose-500 text-slate-950 rounded-lg shrink-0 mt-0.5">
+                  <X className="w-4 h-4 font-black" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-black text-rose-400">রসিদটি খুঁজে পাওয়া যায়নি!</h4>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">অনুগ্রহ করে রসিদের উপরে থাকা কিউআর কোডটি আবারো সঠিকভাবে স্ক্যান করুন অথবা সঠিক মেমো নং টাইপ করুন।</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">মেমো নং / Invoice No</span>
+                  <input 
+                    type="text" 
+                    value={verifyInvoiceId || ''}
+                    onChange={(e) => setVerifyInvoiceId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-bold text-white font-mono uppercase focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (!verifyInvoiceId) return;
+                    setVerificationLoading(true);
+                    dbService.getRSGSMemo(verifyInvoiceId)
+                      .then((memo) => {
+                        setVerifiedMemo(memo);
+                        setVerificationLoading(false);
+                        setVerificationAttempted(true);
+                      })
+                      .catch((err) => {
+                        console.error("Verification error:", err);
+                        setVerificationLoading(false);
+                        setVerificationAttempted(true);
+                      });
+                  }}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                >
+                  আবারো যাচাই করুন
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Link back to Main Portal */}
+          <div className="text-center pt-2">
+            <button
+              onClick={() => {
+                // Clear query parameter and reload
+                window.history.pushState({}, '', window.location.pathname);
+                setVerifyInvoiceId(null);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-extrabold text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <span>কর্মচারী লগইন পোর্টালে ফিরে যান (Main Portal)</span>
+              <span>&rarr;</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -259,6 +463,7 @@ export default function App() {
     { id: 'reports', name: 'রিপোর্ট সমূহ (Reports)', icon: FileText, roleRequired: 'all' },
     { id: 'reminders', name: 'অলস গ্রাহক রিমাইন্ডার (Reminders)', icon: Clock, roleRequired: 'all' },
     { id: 'live_chat', name: 'লাইভ চ্যাটরুম (Live Chat)', icon: MessageSquare, roleRequired: 'all' },
+    { id: 'rsgs_memos', name: 'আরএসজিএস মেমো (RSGS Memos)', icon: FileText, roleRequired: 'all' },
   ];
 
   // Helper to filter nav items based on user role authorization
@@ -517,6 +722,9 @@ export default function App() {
           )}
           {currentTab === 'live_chat' && (
             <LiveChat />
+          )}
+          {currentTab === 'rsgs_memos' && (
+            <RSGSMemoSystem user={currentUser} />
           )}
         </main>
 

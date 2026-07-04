@@ -228,6 +228,28 @@
         "updated_by": { "type": "string", "description": "Username details who modified the document last" }
       },
       "required": ["id", "title", "type", "content", "created_at"]
+    },
+    "rsgs_memo": {
+      "title": "RSGSMemo",
+      "description": "Invoice and money receipt memos for RSGS Global Solution Group courses and services",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique memo ID" },
+        "memo_type": { "type": "string", "enum": ["customer", "student"], "description": "Type of memo" },
+        "client_name": { "type": "string", "description": "Full name of the customer or student" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "address": { "type": "string", "description": "Optional physical address" },
+        "service_type": { "type": "string", "description": "Name of service or course registered" },
+        "duration": { "type": "string", "description": "Duration of service/course (e.g. '3 months', '7 days')" },
+        "total_amount": { "type": "number", "description": "Total bill amount" },
+        "advanced_amount": { "type": "number", "description": "Amount paid upfront/advanced" },
+        "due_amount": { "type": "number", "description": "Remaining due amount" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "created_by_id": { "type": "string", "description": "ID/phone of the operator who created the memo" },
+        "created_by_name": { "type": "string", "description": "Name of the operator who created the memo" },
+        "notes": { "type": "string", "description": "Additional notes" }
+      },
+      "required": ["id", "memo_type", "client_name", "phone", "service_type", "duration", "total_amount", "advanced_amount", "due_amount", "created_at", "created_by_id", "created_by_name"]
     }
   },
   "firestore": {
@@ -282,6 +304,10 @@
     "/office_plans/{planId}": {
       "schema": "office_plan",
       "description": "Office targets, plans, schedules, and weekly rosters"
+    },
+    "/rsgs_memos/{memoId}": {
+      "schema": "rsgs_memo",
+      "description": "RSGS memos and invoices data"
     }
   }
 }

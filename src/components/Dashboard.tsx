@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, FormEvent } from 'react';
 import { dbService } from '../db';
-import { DailyStat, Profile, Order, Expense, DailyLog } from '../types';
+import { DailyStat, Profile, Order, Expense, DailyLog, Customer } from '../types';
 import { useNotification } from './NotificationContext';
+import { useWhatsAppNotification } from './WhatsAppNotificationContext';
 import { isAdmin as isUserAdmin } from '../utils/auth';
 import AddToHomeScreenCTA from './AddToHomeScreenCTA';
 import { 
@@ -33,7 +34,14 @@ import {
   Trash2,
   Copy,
   Plus,
-  Check
+  Check,
+  Clock,
+  AlertTriangle,
+  MessageSquare,
+  Phone,
+  MapPin,
+  Calendar,
+  X
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -63,6 +71,16 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
     };
     chartData: DailyStat[];
   } | null>(null);
+
+  const { 
+    inactiveCustomers, 
+    sentReminders, 
+    launchWhatsAppReminder,
+    templates
+  } = useWhatsAppNotification();
+  
+  const [selectedReminderCustomer, setSelectedReminderCustomer] = useState<Customer | null>(null);
+  const [reminderText, setReminderText] = useState('');
 
   // Daily Operations Log entry states
   const [logDescription, setLogDescription] = useState('');
@@ -316,7 +334,7 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
       unsubscribeOrders();
       unsubscribeExpenses();
     };
-  }, [user, showError]);
+  }, [user, showError, isAdmin]);
 
   if (loading || !stats) {
     return (
@@ -1091,6 +1109,115 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
         </div>
       </div>
 
+      {/* Real-time Inactive Customers Section */}
+      {isAdmin && (
+        <div className="bg-white p-5 rounded-bento border border-bento-border shadow-bento font-sans mt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-bento-border pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <Clock className="w-4.5 h-4.5 text-rose-600 animate-pulse" />
+                অলস গ্রাহক তালিকা (Inactive Customers - older than 15 days)
+              </h3>
+              <p className="text-xs text-bento-muted mt-0.5 font-sans font-semibold">
+                যে সকল গ্রাহকরা ১৫ দিনের বেশি সময় ধরে কোনো অর্ডার করেননি (Real-time tracked)
+              </p>
+            </div>
+            <div className="bg-rose-50 text-rose-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-rose-100 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+              <span>অলস গ্রাহক সংখ্যা: {inactiveCustomers.length} জন</span>
+            </div>
+          </div>
+
+          {inactiveCustomers.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="w-10 h-10 text-slate-350 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-500">সব গ্রাহক বর্তমানে সক্রিয় রয়েছেন! 🎉</p>
+              <p className="text-[10px] text-slate-450 mt-0.5">গত ১৫ দিনে সব গ্রাহকেরই অর্ডার রয়েছে।</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {inactiveCustomers.map((cust) => {
+                // Calculate elapsed days
+                const diffMs = Math.abs(new Date().getTime() - new Date(cust.last_order_date!).getTime());
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+                return (
+                  <div
+                    key={cust.id}
+                    className={`p-4 rounded-bento border transition-all flex flex-col justify-between ${
+                      sentReminders[cust.id] 
+                        ? 'border-emerald-200 bg-emerald-50/10' 
+                        : 'border-slate-205/80 bg-slate-50/40 hover:bg-slate-50/90'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-1 mb-2">
+                        <span className="text-xs font-bold text-slate-800 line-clamp-1">{cust.name}</span>
+                        <span className="bg-rose-100 text-rose-800 text-[9px] font-extrabold px-2 py-0.5 rounded-sm shrink-0">
+                          {diffDays} দিন অলস
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 text-slate-500 text-[11px] font-mono mb-3">
+                        <p className="flex items-center gap-1 font-sans">
+                          📞 মোবাইল:{" "}
+                          <a 
+                            href={`tel:${cust.phone}`} 
+                            className="text-emerald-600 hover:text-emerald-800 underline font-mono font-bold"
+                            title="সরাসরি কল দিন (Call)"
+                          >
+                            {cust.phone}
+                          </a>
+                        </p>
+                        {cust.address && <p className="font-sans">🏠 ঠিকানা: {cust.address}</p>}
+                        <p className="font-sans text-slate-400 flex items-center gap-1 mt-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          শেষ অর্ডার: {new Date(cust.last_order_date!).toLocaleDateString('bn-BD')}
+                        </p>
+                      </div>
+
+                      {sentReminders[cust.id] && (
+                        <div className="my-2 text-[10px] font-bold text-emerald-700 flex items-center gap-1 bg-emerald-50/50 p-1.5 rounded border border-emerald-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                          <span>রিমাইন্ডার পাঠানো হয়েছে</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const dStr = cust.last_order_date 
+                          ? new Date(cust.last_order_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : "কিছুদিন আগে";
+                        
+                        // Try to find the inactivity template or construct
+                        const inactTemplate = templates.find(t => t.id === 'inactivity_reminder') || templates[0];
+                        let templateText = inactTemplate.text;
+                        templateText = templateText
+                          .replace(/{name}/g, cust.name)
+                          .replace(/{days}/g, String(diffDays))
+                          .replace(/{date}/g, dStr);
+                        
+                        setReminderText(templateText);
+                        setSelectedReminderCustomer(cust);
+                      }}
+                      className={`w-full py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all duration-150 ${
+                        sentReminders[cust.id]
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/5'
+                      }`}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" /> 
+                      {sentReminders[cust.id] ? "আবার রিমাইন্ডার পাঠান (Resend)" : "রিমাইন্ডার পাঠান (Send Reminder)"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {isAdmin && (
         <div className="bg-bento-card p-5 rounded-bento border border-bento-border shadow-bento font-sans mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-bento-border pb-3">
@@ -1130,7 +1257,16 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
                     </span>
                   </div>
                   <div className="space-y-1 text-slate-500 text-[11px] font-mono">
-                    <p>📞 মোবাইল: {op.phone}</p>
+                    <p className="flex items-center gap-1 font-sans">
+                      📞 মোবাইল:{" "}
+                      <a 
+                        href={`tel:${op.phone}`} 
+                        className="text-emerald-600 hover:text-emerald-800 underline font-mono font-bold"
+                        title="সরাসরি কল দিন (Call Operator)"
+                      >
+                        {op.phone}
+                      </a>
+                    </p>
                     {op.address && <p>🏠 ঠিকানা: {op.address}</p>}
                     <p>⏰ নিবন্ধিত: {op.created_at ? new Date(op.created_at).toLocaleDateString('bn-BD') : 'N/A'}</p>
                   </div>
@@ -1165,6 +1301,79 @@ export default function Dashboard({ user, onNavigate, pendingOperatorsCount }: D
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Customizable Reminder Modal */}
+      {selectedReminderCustomer && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-emerald-100 max-w-lg w-full overflow-hidden flex flex-col relative animate-fade-in-down">
+            
+            {/* Modal Header */}
+            <div className="bg-emerald-600 text-white p-4 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-white/10 shrink-0">
+                <MessageSquare className="w-6 h-6 text-emerald-250" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-extrabold text-sm tracking-wide">রিমাইন্ডার মেসেজ পরিবর্তন করুন</h3>
+                <p className="text-[10px] text-emerald-100 font-semibold tracking-wider uppercase mt-0.5">Customize WhatsApp Reminder Message</p>
+              </div>
+              <button 
+                onClick={() => setSelectedReminderCustomer(null)}
+                className="p-1 hover:bg-emerald-700 rounded-lg text-emerald-100/80 hover:text-white cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 leading-relaxed font-sans">
+                <div className="flex justify-between font-bold mb-1">
+                  <span>গ্রাহকের নাম: {selectedReminderCustomer.name}</span>
+                  <span className="font-mono text-slate-600">{selectedReminderCustomer.phone}</span>
+                </div>
+                {selectedReminderCustomer.address && (
+                  <p className="text-slate-500">ঠিকানা: {selectedReminderCustomer.address}</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                  হোয়াটসঅ্যাপ বার্তা (Customizable Text)
+                </label>
+                <textarea
+                  value={reminderText}
+                  onChange={(e) => setReminderText(e.target.value)}
+                  rows={8}
+                  className="w-full text-xs p-3 border border-slate-250 rounded-xl focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed font-sans"
+                  placeholder="আপনার রিমাইন্ডার মেসেজটি এখানে লিখুন..."
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-100 flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedReminderCustomer(null)}
+                className="flex-1 py-2.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 bg-white font-bold rounded-lg text-xs transition-all cursor-pointer text-center active:scale-95"
+              >
+                বাতিল (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  launchWhatsAppReminder(selectedReminderCustomer, reminderText);
+                  setSelectedReminderCustomer(null);
+                }}
+                className="flex-1 py-2.5 text-white bg-emerald-600 hover:bg-emerald-500 font-bold rounded-lg text-xs transition-all shadow-md shadow-emerald-900/10 cursor-pointer text-center active:scale-95"
+              >
+                মেসেজ পাঠান (Send WhatsApp)
+              </button>
+            </div>
+
           </div>
         </div>
       )}

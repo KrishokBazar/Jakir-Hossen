@@ -2,7 +2,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { dbService } from '../db';
 import { CostSettings, Profile, Order } from '../types';
 import { useNotification } from './NotificationContext';
-import { Sliders, HelpCircle, Save, TrendingUp, AlertCircle, RefreshCw, BarChart2, DollarSign, Palette } from 'lucide-react';
+import { Sliders, HelpCircle, Save, TrendingUp, AlertCircle, RefreshCw, BarChart2, DollarSign, Palette, Database, Activity } from 'lucide-react';
 
 interface CostSettingsProps {
   user: Profile;
@@ -23,6 +23,42 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
   // Financial Stats
   const [orders, setOrders] = useState<Order[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Manual sync states
+  const [manualSync, setManualSync] = useState<boolean>(() => {
+    return localStorage.getItem('kb_manual_sync_enabled') === 'true';
+  });
+  const [syncing, setSyncing] = useState<boolean>(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(() => {
+    return localStorage.getItem('kb_last_synced_time') || null;
+  });
+
+  const handleToggleManualSync = (enabled: boolean) => {
+    setManualSync(enabled);
+    localStorage.setItem('kb_manual_sync_enabled', enabled ? 'true' : 'false');
+    showNotification(
+      enabled ? "ম্যানুয়াল সিঙ্ক সক্রিয়" : "লাইভ সিঙ্ক সক্রিয়",
+      enabled 
+        ? "রিয়েল-টাইম লাইভ আপডেট নিষ্ক্রিয় করা হয়েছে। এখন থেকে ম্যানুয়ালি সিঙ্ক করতে হবে।" 
+        : "স্বয়ংক্রিয় রিয়েল-টাইম লাইভ আপডেট পুনরায় চালু করা হয়েছে।",
+      "success"
+    );
+  };
+
+  const handleForceSync = async () => {
+    setSyncing(true);
+    try {
+      await dbService.forceSyncAllActive();
+      const nowStr = new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastSynced(nowStr);
+      localStorage.setItem('kb_last_synced_time', nowStr);
+      showNotification("সিঙ্ক সফল", "ডাটাবেজের সাথে সফলভাবে সকল তথ্য সিঙ্ক করা হয়েছে!", "success");
+    } catch (err: any) {
+      showError("সিঙ্ক করতে সমস্যা হয়েছে", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const loadSettingsData = async () => {
     setLoading(true);
@@ -125,7 +161,7 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Settings Configuration Card */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-6">
           <form onSubmit={handleSave} className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
             <h3 className="font-bold text-slate-900 text-sm border-b border-slate-100 pb-2 flex items-center gap-1.5">
               Cost Settings Coefficients
@@ -260,6 +296,76 @@ export default function CostSettingsView({ user }: CostSettingsProps) {
               </button>
             </div>
           </form>
+
+          {/* Manual Database Sync Card */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
+            <h3 className="font-bold text-slate-900 text-sm border-b border-slate-100 pb-2 flex items-center gap-1.5">
+              <Database className="w-4 h-4 text-amber-500 shrink-0" />
+              ম্যানুয়াল ডাটাবেজ সিঙ্ক (Manual DB Sync)
+            </h3>
+
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-800">ম্যানুয়াল সিঙ্ক মোড সক্রিয় করুন</p>
+                <p className="text-[10px] text-slate-450 leading-relaxed">
+                  ধীরগতির নেটওয়ার্কে লাইভ আপডেট পিছিয়ে থাকলে লাইভ সিঙ্ক বন্ধ করে এই মোড অন করুন।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleManualSync(!manualSync)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                  manualSync ? 'bg-amber-500' : 'bg-slate-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    manualSync ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {manualSync ? (
+              <div className="bg-amber-50/50 border border-amber-100 p-3.5 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-amber-800 text-xs font-medium">
+                  <Activity className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
+                  <span>ম্যানুয়াল সিঙ্ক মোড রানিং আছে</span>
+                </div>
+                
+                <p className="text-[10px] text-amber-700 leading-normal">
+                  সিস্টেমের কোনো তথ্য স্বয়ংক্রিয়ভাবে আপডেট হবে না। ডাটাবেজ থেকে নতুন ডাটা লোড করতে নিচের বাটনটি ব্যবহার করুন।
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleForceSync}
+                  disabled={syncing}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'ডাটাবেজ থেকে তথ্য আনা হচ্ছে...' : 'এখনই ডাটা সিঙ্ক করুন (Force Sync)'}
+                </button>
+
+                {lastSynced && (
+                  <p className="text-[9px] text-slate-450 text-center font-mono">
+                    সর্বশেষ সফল সিঙ্ক: <span className="font-bold">{lastSynced}</span>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-slate-50/70 border border-slate-100 p-3.5 rounded-lg space-y-2">
+                <div className="flex items-center gap-2 text-slate-750 text-xs font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 -ml-4" />
+                  <span>স্বয়ংক্রিয় লাইভ সিঙ্ক সক্রিয়</span>
+                </div>
+                <p className="text-[10px] text-slate-450 leading-relaxed">
+                  ডাটাবেজে কোনো পরিবর্তন হলেই তা তাৎক্ষণিকভাবে স্বয়ংক্রিয়ভাবে আপনার স্ক্রিনে আপডেট হয়ে যাচ্ছে।
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Consolidated Financial Yield statement (Admin Audit) */}

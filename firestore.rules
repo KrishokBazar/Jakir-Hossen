@@ -267,6 +267,26 @@ service cloud.firestore {
         && (!('resolution_notes' in data) || (data.resolution_notes is string && data.resolution_notes.size() <= 2000));
     }
 
+    // RSGS MEMO VALIDATIONS
+    function isValidRSGSMemo(data) {
+      return data.keys().hasAll(['id', 'memo_type', 'client_name', 'phone', 'service_type', 'duration', 'total_amount', 'advanced_amount', 'due_amount', 'created_at', 'created_by_id', 'created_by_name'])
+        && data.keys().size() <= 14
+        && data.id is string && data.id.size() <= 128
+        && (data.memo_type == 'customer' || data.memo_type == 'student')
+        && data.client_name is string && data.client_name.size() <= 200
+        && data.phone is string && data.phone.size() <= 30
+        && data.service_type is string && data.service_type.size() <= 200
+        && data.duration is string && data.duration.size() <= 100
+        && data.total_amount is number && data.total_amount >= 0
+        && data.advanced_amount is number && data.advanced_amount >= 0
+        && data.due_amount is number && data.due_amount >= 0
+        && data.created_at is string && data.created_at.size() <= 100
+        && data.created_by_id is string && data.created_by_id.size() <= 128
+        && data.created_by_name is string && data.created_by_name.size() <= 200
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 500));
+    }
+
     match /farmer_sales/{saleId} {
       allow read: if true;
       allow write: if isValidId(saleId) && isValidFarmerSale(incoming());
@@ -318,6 +338,13 @@ service cloud.firestore {
 
     match /office_plans/{planId} {
       allow read, write: if true;
+    }
+
+    match /rsgs_memos/{memoId} {
+      allow read: if true;
+      allow create: if isValidId(memoId) && isValidRSGSMemo(incoming()) && incoming().id == memoId;
+      allow update: if isValidId(memoId) && isValidRSGSMemo(incoming()) && incoming().id == memoId && isAdminUser();
+      allow delete: if isAdminUser();
     }
 
     match /audit_logs/{logId} {

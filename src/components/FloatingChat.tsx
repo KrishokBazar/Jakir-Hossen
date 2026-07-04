@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, FormEvent, ChangeEvent, useMemo } from 're
 import { dbService } from '../db';
 import { ChatMessage, Profile, ChatGroup } from '../types';
 import { useNotification } from './NotificationContext';
+import { useWhatsAppNotification } from './WhatsAppNotificationContext';
 import { playIncomingTone, playOutgoingTone } from '../utils/audio';
 import { compressImage } from '../utils/imageCompressor';
 import { 
@@ -65,14 +66,6 @@ const formatPopText = (text: string, isMyMessage: boolean) => {
   });
 };
 
-const QUICK_TEMPLATES = [
-  { id: '', label: '⚡ কুইক মেসেজ টেমপ্লেট (Quick Templates)...' },
-  { id: 'order_update', label: '📦 অর্ডার আপডেট (Order Update)', text: 'প্রিয় গ্রাহক, আপনার অর্ডারটি সফলভাবে আপডেট করা হয়েছে। ধন্যবাদ!' },
-  { id: 'delivery_alert', label: '🚚 ডেলিভারি এলার্ট (Delivery Alert)', text: 'প্রিয় গ্রাহক, আপনার অর্ডারটি ডেলিভারির জন্য পাঠানো হয়েছে। কিছুক্ষণের মধ্যেই ডেলিভারি ম্যান আপনার সাথে যোগাযোগ করবেন।' },
-  { id: 'payment_reminder', label: '💳 বকেয়া পরিশোধ (Payment Reminder)', text: 'প্রিয় গ্রাহক, আপনার বকেয়া পেমেন্টটি পরিশোধ করার জন্য বিনীত অনুরোধ করা হচ্ছে। ধন্যবাদ!' },
-  { id: 'welcome', label: '👋 স্বাগতম শুভেচ্ছা (Welcome Message)', text: 'কৃষক বাজারে আপনাকে স্বাগতম! আমরা কীভাবে আপনাকে সাহায্য করতে পারি?' }
-];
-
 export default function FloatingChat() {
   const currentUserRaw = dbService.getCurrentUser();
   const currentUser = useMemo(() => currentUserRaw, [
@@ -85,6 +78,7 @@ export default function FloatingChat() {
   if (!currentUser) return null; // Only render when authenticated
 
   const { showNotification } = useNotification();
+  const { templates } = useWhatsAppNotification();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
@@ -539,7 +533,7 @@ export default function FloatingChat() {
                     onChange={(e) => {
                       const selectedVal = e.target.value;
                       if (selectedVal) {
-                        const template = QUICK_TEMPLATES.find(t => t.id === selectedVal);
+                        const template = templates.find(t => t.id === selectedVal);
                         if (template) {
                           setInputText(template.text);
                         }
@@ -550,7 +544,8 @@ export default function FloatingChat() {
                     className="w-full bg-white border border-slate-300 text-[10px] text-slate-700 font-extrabold rounded-lg px-2 py-1 focus:outline-[#075E54] cursor-pointer h-7"
                     defaultValue=""
                   >
-                    {QUICK_TEMPLATES.map((t) => (
+                    <option value="">⚡ কুইক মেসেজ টেমপ্লেট (Quick Templates)...</option>
+                    {templates.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.label}
                       </option>
