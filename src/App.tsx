@@ -234,6 +234,9 @@ export default function App() {
       let element = e.target as HTMLElement | null;
       while (element) {
         if (element.tagName === 'A') {
+          if (element.getAttribute('data-bypass') === 'true') {
+            return;
+          }
           const href = (element as HTMLAnchorElement).href;
           if (href && (href.includes('wa.me') || href.includes('whatsapp.com/send'))) {
             e.preventDefault();
@@ -672,8 +675,8 @@ export default function App() {
         {/* Offscreen element for generating PDF */}
         {verifiedMemo && (
           <div 
-            className="fixed left-0 top-0 opacity-0 pointer-events-none -z-50 overflow-hidden" 
-            style={{ width: '800px', height: 'auto' }}
+            className="fixed pointer-events-none -z-50 overflow-hidden" 
+            style={{ width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }}
           >
             <div 
               id="verified-invoice-pdf-area" 
@@ -1252,6 +1255,7 @@ export default function App() {
                       tempLink.href = whatsappUrl;
                       tempLink.target = '_blank';
                       tempLink.rel = 'noreferrer';
+                      tempLink.setAttribute('data-bypass', 'true');
                       document.body.appendChild(tempLink);
                       tempLink.click();
                       document.body.removeChild(tempLink);
