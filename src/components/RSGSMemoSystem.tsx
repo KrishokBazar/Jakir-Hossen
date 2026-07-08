@@ -50,6 +50,11 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
   const [autoSendOnSave, setAutoSendOnSave] = useState(false);
   const [pendingAutoSend, setPendingAutoSend] = useState<RSGSMemo | null>(null);
 
+  // Batch selection states
+  const [selectedMemoIds, setSelectedMemoIds] = useState<string[]>([]);
+  const [isGeneratingBatchPDF, setIsGeneratingBatchPDF] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+
   // Repeat / Recurring states
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringInterval, setRecurringInterval] = useState<'weekly' | 'monthly'>('monthly');
@@ -549,15 +554,46 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
 
     setIsGeneratingPDF(true);
     try {
-      // Small delay to ensure any dynamic assets/images are fully rendered
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Small delay to ensure any dynamic assets/images/QR codes are fully rendered
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
       const canvas = await html2canvas(element, {
-        scale: 2, // 2x density for extra high class crispness
+        scale: 1.5, // 1.5x density is optimal for mobile devices and high crispness
         useCORS: true,
-        logging: true, // Enable html2canvas internal logs for deeper debugging
-        backgroundColor: '#ffffff'
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.scrollWidth || 800,
+        windowHeight: element.scrollHeight || 1200,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('print-invoice-area');
+          if (clonedElement) {
+            clonedElement.style.transform = 'none';
+            clonedElement.style.margin = '0';
+            clonedElement.style.position = 'relative';
+            clonedElement.style.left = '0';
+            clonedElement.style.top = '0';
+            clonedElement.style.width = '800px';
+            clonedElement.style.maxWidth = 'none';
+            clonedElement.style.height = 'auto';
+
+            // Ensure any scrollable parent containers in the cloned DOM do not clip the content
+            let parent = clonedElement.parentElement;
+            while (parent) {
+              parent.style.overflow = 'visible';
+              parent.style.maxHeight = 'none';
+              parent.style.height = 'auto';
+              parent = parent.parentElement;
+            }
+          }
+        }
       });
+
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        throw new Error('Canvas rendering resulted in an empty or invalid size.');
+      }
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
@@ -618,6 +654,311 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         console.error('Failed to copy link: ', err);
         showNotification('ত্রুটি', 'লিঙ্ক কপি করা যায়নি।', 'danger');
       });
+  };
+
+  const handleSelectRow = (id: string) => {
+    setSelectedMemoIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllChange = () => {
+    if (selectedMemoIds.length === filteredMemos.length && filteredMemos.length > 0) {
+      setSelectedMemoIds([]);
+    } else {
+      setSelectedMemoIds(filteredMemos.map(m => m.id));
+    }
+  };
+
+  const handleDownloadBatchPDF = async () => {
+    if (selectedMemoIds.length === 0) {
+      showNotification('সতর্কতা', 'অনুগ্রহ করে কমপক্ষে একটি মেমো সিলেক্ট করুন।', 'warning');
+      return;
+    }
+
+    setIsGeneratingBatchPDF(true);
+    setBatchProgress({ current: 0, total: selectedMemoIds.length });
+    try {
+      showNotification('পিডিএফ জেনারেট হচ্ছে', `আপনার সিলেক্ট করা ${selectedMemoIds.length}টি মেমো দিয়ে মাল্টি-পেজ পিডিএফ তৈরি করা হচ্ছে। অনুগ্রহ করে অপেক্ষা করুন...`, 'info');
+      
+      // Small delay to ensure all offscreen elements are fully rendered and layout settled
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 size width in mm
+      const pageHeight = 297; // A4 size height in mm
+
+      for (let i = 0; i < selectedMemoIds.length; i++) {
+        const memoId = selectedMemoIds[i];
+        const element = document.getElementById(`batch-invoice-area-${memoId}`);
+        if (!element) {
+          console.error(`Batch element not found: batch-invoice-area-${memoId}`);
+          continue;
+        }
+
+        const canvas = await html2canvas(element, {
+          scale: 1.5, // 1.5x density is optimal for high quality
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 800,
+          windowHeight: 1200,
+          onclone: (clonedDoc) => {
+            const clonedElement = clonedDoc.getElementById(`batch-invoice-area-${memoId}`);
+            if (clonedElement) {
+              clonedElement.style.transform = 'none';
+              clonedElement.style.margin = '0';
+              clonedElement.style.position = 'relative';
+              clonedElement.style.left = '0';
+              clonedElement.style.top = '0';
+              clonedElement.style.width = '800px';
+              clonedElement.style.maxWidth = 'none';
+              clonedElement.style.height = 'auto';
+
+              // Ensure any scrollable parent containers in the cloned DOM do not clip the content
+              let parent = clonedElement.parentElement;
+              while (parent) {
+                parent.style.overflow = 'visible';
+                parent.style.maxHeight = 'none';
+                parent.style.height = 'auto';
+                parent = parent.parentElement;
+              }
+            }
+          }
+        });
+
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+          throw new Error(`Canvas rendering failed for memo ID: ${memoId}`);
+        }
+
+        const imgData = canvas.toDataURL('image/png');
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let yOffset = 0;
+        if (imgHeight < pageHeight) {
+          yOffset = (pageHeight - imgHeight) / 2;
+        }
+
+        if (i > 0) {
+          pdf.addPage();
+        }
+
+        pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, imgHeight);
+
+        // Update progress state after rendering current page
+        setBatchProgress({ current: i + 1, total: selectedMemoIds.length });
+      }
+
+      pdf.save(`RSGS_Batch_Memos_${new Date().toISOString().slice(0, 10)}.pdf`);
+      showNotification('ডাউনলোড সফল', `সবগুলো (${selectedMemoIds.length}টি) মেমো সম্বলিত মাল্টি-পেজ পিডিএফ সফলভাবে ডাউনলোড হয়েছে।`, 'success');
+      setSelectedMemoIds([]);
+    } catch (err) {
+      console.error('Error generating batch PDF:', err);
+      showNotification('ত্রুটি', 'ব্যাচ পিডিএফ ফাইল তৈরি করতে ব্যর্থ হয়েছে।', 'danger');
+    } finally {
+      setIsGeneratingBatchPDF(false);
+      setBatchProgress(null);
+    }
+  };
+
+  const renderInvoiceArea = (memo: RSGSMemo, isBatch: boolean = false) => {
+    return (
+      <div 
+        id={isBatch ? `batch-invoice-area-${memo.id}` : "print-invoice-area"} 
+        className="bg-white mx-auto shadow-sm p-6 sm:p-10 border border-slate-200 rounded-lg max-w-2xl font-sans text-slate-800 relative overflow-hidden"
+      >
+        {/* Subtle company-branded semi-transparent watermark */}
+        <div className="print-watermark absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-[0.035] sm:opacity-[0.045]">
+          <div className="transform -rotate-[35deg] text-center space-y-1 sm:space-y-2">
+            <p className="text-4xl sm:text-6xl font-black tracking-widest uppercase text-slate-900 font-sans">
+              RSGS GLOBAL
+            </p>
+            <p className="text-lg sm:text-xl font-extrabold tracking-wider uppercase text-indigo-900 font-sans">
+              OFFICIAL INVOICE
+            </p>
+            <p className="text-[9px] sm:text-[10px] font-mono font-black tracking-widest text-slate-700">
+              SECURE SYSTEM VERIFIED • NON-TAMPERABLE
+            </p>
+          </div>
+        </div>
+
+        {/* Invoice Stamp Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-200 pb-6">
+          {/* Company Left Panel */}
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-1">
+              <Building2 className="w-6 h-6 text-indigo-600 no-print" />
+              <span>RSGS Global Solution Group</span>
+            </h2>
+            <p className="text-[10px] text-slate-500 font-extrabold tracking-widest uppercase">Digital Agency & Tech Training Institute</p>
+            <div className="text-[10px] text-slate-450 leading-relaxed font-semibold">
+              <p>সৈয়দ প্লাজা (২য় তলা), রাজ্জাক প্লাজা সংলগ্ন, ঢাকা (Syed Plaza 2nd Floor, Adjacent to Razzak Plaza, Dhaka)</p>
+              <p>হোয়াটসঅ্যাপ / মোবাইল: ০১৭৪৮৫২৪৩৮১ (WhatsApp / Cell: +8801748524381)</p>
+              <p>ইমেইল: support@rsgs.global | ওয়েব: www.rsgs.global</p>
+            </div>
+          </div>
+
+          {/* Title Right Panel */}
+          <div className="text-left sm:text-right space-y-1">
+            <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-extrabold rounded-md uppercase tracking-wider">
+              {memo.memo_type === 'customer' ? 'Customer Memo' : 'Student Memo'}
+            </span>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight mt-1.5">মানি রিসিট / মেমো</h1>
+            <p className="text-xs font-bold text-indigo-600 font-mono">Invoice NO: {memo.id}</p>
+            <p className="text-[10px] text-slate-450 font-bold">
+              Date: {new Date(memo.created_at).toLocaleDateString('bn-BD')} ({new Date(memo.created_at).toLocaleDateString('en-US')})
+            </p>
+          </div>
+        </div>
+
+        {/* Client Metadata details */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6 text-xs bg-slate-50 p-4.5 rounded-xl border border-slate-100">
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">বিল প্রাপক (Invoiced To)</p>
+            <p className="text-sm font-black text-slate-900">{memo.client_name}</p>
+            {memo.memo_type === 'student' && memo.student_id && (
+              <div className="mt-1">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  ID / Roll: {memo.student_id}
+                </span>
+              </div>
+            )}
+            {memo.phone && <p className="font-mono text-slate-600 font-semibold">Phone: {memo.phone}</p>}
+            {memo.address && <p className="text-slate-500 font-semibold">Address: {memo.address}</p>}
+          </div>
+          
+          <div className="space-y-1.5 text-left md:text-right">
+            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">প্রস্তুতকারক (Issued By)</p>
+            <p className="text-sm font-black text-slate-900">RSGS Billing Portal</p>
+            <p className="text-slate-600 font-semibold">Operator: {memo.created_by_name}</p>
+            <p className="text-slate-500 text-[10px] font-bold">সিস্টেম দ্বারা অনুমোদিত এবং সিঙ্কড।</p>
+          </div>
+        </div>
+
+        {/* Services/Courses Table breakdown */}
+        <div className="my-6">
+          <p className="text-[10px] text-slate-450 font-extrabold uppercase tracking-widest mb-2.5">অর্ডার বিবরণ (Service / Course Specifications)</p>
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <th className="py-2.5 px-3">ক্রমিক (Item)</th>
+                <th className="py-2.5 px-3">সার্ভিস / কোর্সের বিবরণ</th>
+                <th className="py-2.5 px-3 text-center">স্থায়িত্ব (Duration)</th>
+                <th className="py-2.5 px-3 text-right">মূল্য (Price)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr>
+                <td className="py-3 px-3 font-mono font-bold">01</td>
+                <td className="py-3 px-3">
+                  <p className="font-bold text-slate-900">{memo.service_type}</p>
+                  {memo.notes && <p className="text-[10px] text-slate-450 mt-1 leading-relaxed max-w-md italic">{memo.notes}</p>}
+                </td>
+                <td className="py-3 px-3 text-center font-bold text-slate-700">{memo.duration}</td>
+                <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">৳{memo.total_amount.toLocaleString('bn-BD')}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Invoice Summary calculation block */}
+        <div className="border-t border-slate-200 pt-5 flex justify-end">
+          <div className="w-full sm:w-64 space-y-2.5 text-xs">
+            <div className="flex justify-between font-semibold text-slate-600">
+              <span>মোট ফি (Total Amount):</span>
+              <span className="font-mono">৳{memo.total_amount.toLocaleString('bn-BD')}</span>
+            </div>
+            
+            <div className="flex justify-between font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+              <span>অগ্রিম প্রদান (Advanced Paid):</span>
+              <span className="font-mono">৳{memo.advanced_amount.toLocaleString('bn-BD')}</span>
+            </div>
+
+            <div className={`flex justify-between font-extrabold px-2 py-1 rounded ${
+              memo.due_amount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              <span>বকেয়া পরিমাণ (Remaining Due):</span>
+              <span className="font-mono">৳{memo.due_amount.toLocaleString('bn-BD')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Declaration terms / Signatures */}
+        <div className="mt-12 pt-6 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-6 text-[9px] text-slate-450 leading-relaxed">
+          <div>
+            <p className="font-extrabold uppercase tracking-wider text-slate-500 mb-1">শর্তাবলী / Terms & Conditions</p>
+            <p>১. অগ্রিম প্রদানকৃত ফি কোনো অবস্থাতেই অফেরতযোগ্য।</p>
+            <p>২. বকেয়া পরিশোধ সাপেক্ষে পূর্ণ সেবা চালু থাকবে।</p>
+            <p>৩. এই রসিদটি ডিজিটাল সার্ভার দ্বারা তৈরি এবং সার্ভার থেকে সত্যতা যাচাইযোগ্য।</p>
+          </div>
+
+          {/* Verification QR Code Column */}
+          <div className="flex flex-col items-center text-center justify-center border-y sm:border-y-0 sm:border-x border-slate-100 py-3 sm:py-0 px-2 bg-slate-50/50 rounded-lg">
+            <div className="bg-white p-1 border border-slate-200 rounded-md shadow-3xs">
+              <LocalQRCode 
+                text={`${window.location.origin}?verify=${memo.id}`}
+                className="w-16 h-16 object-contain"
+              />
+            </div>
+            <p className="mt-1.5 text-[8px] font-black text-indigo-700 tracking-tight flex items-center gap-0.5">
+              <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+              <span>রসিদ ভেরিফিকেশন কিউআর</span>
+            </p>
+            <p className="text-[7px] text-slate-400 font-mono mt-0.5 font-bold uppercase">Scan to Verify Invoice</p>
+
+            {/* Copy Verification Link Button (Hidden in Print/PDF generation) */}
+            <button
+              onClick={() => handleCopyVerificationLink(memo.id)}
+              data-html2canvas-ignore="true"
+              className="print:hidden mt-2 px-2.5 py-1 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold rounded-md text-[8.5px] cursor-pointer flex items-center gap-1 transition-all border border-slate-200 shadow-3xs hover:shadow-2xs select-none hover:text-indigo-600"
+              title="ভেরিফিকেশন লিঙ্ক কপি করুন (Copy Verification Link)"
+            >
+              {copiedLinkId === memo.id ? (
+                <>
+                  <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                  <span className="text-emerald-600 font-black">লিঙ্ক কপি হয়েছে!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3 text-slate-400 shrink-0 animate-pulse" />
+                  <span>লিঙ্ক কপি করুন</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="flex flex-col items-center justify-end space-y-1">
+              {memo.signature_data ? (
+                <img 
+                  src={memo.signature_data} 
+                  alt="Customer Signature" 
+                  className="max-h-12 max-w-[120px] object-contain border border-slate-100 rounded p-0.5 bg-white mb-1"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="h-12 w-28 border-b border-slate-200 border-dashed" />
+              )}
+              <p className="text-[10px] font-bold text-slate-600">গ্রাহক / ছাত্রের স্বাক্ষর</p>
+            </div>
+
+            <div className="flex flex-col items-center justify-end space-y-1">
+              <div className="h-12 w-28 border-b border-slate-200 border-dashed flex items-end justify-center pb-1">
+                <span className="text-[8px] font-mono text-slate-300 font-bold">Authorized</span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-600">কর্তৃপক্ষের স্বাক্ষর</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Sends PDF details and triggers direct WhatsApp redirect
@@ -1025,6 +1366,64 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           </div>
         </div>
 
+        {/* Batch Operations Bar */}
+        {selectedMemoIds.length > 0 && (
+          <div className="p-4 bg-indigo-50/60 border-b border-indigo-150 flex flex-col gap-3 animate-fade-in no-print">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="h-6 w-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
+                  {selectedMemoIds.length}
+                </span>
+                <p className="text-xs font-bold text-indigo-800">
+                  টি মেমো সিলেক্ট করা হয়েছে
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={handleDownloadBatchPDF}
+                  disabled={isGeneratingBatchPDF}
+                  className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold cursor-pointer transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
+                  {isGeneratingBatchPDF ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  <span>একত্রে ডাউনলোড করুন (Batch PDF)</span>
+                </button>
+                <button
+                  onClick={() => setSelectedMemoIds([])}
+                  disabled={isGeneratingBatchPDF}
+                  className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl text-xs font-extrabold cursor-pointer transition-all disabled:opacity-50"
+                >
+                  বাতিল করুন
+                </button>
+              </div>
+            </div>
+
+            {/* Visual Progress Bar Indicator */}
+            {isGeneratingBatchPDF && batchProgress && (
+              <div className="w-full space-y-1.5 animate-fade-in mt-1 border-t border-indigo-100 pt-2.5">
+                <div className="flex justify-between items-center text-[10px] font-bold text-indigo-700">
+                  <span className="flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>পিডিএফ রেন্ডারিং ও প্রসেসিং প্রোগ্রেস...</span>
+                  </span>
+                  <span className="font-mono text-indigo-600 bg-indigo-100/80 px-2 py-0.5 rounded-full">
+                    {batchProgress.current} / {batchProgress.total} ({Math.round((batchProgress.current / batchProgress.total) * 100)}%)
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-100">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Memo List View */}
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center gap-3">
@@ -1044,6 +1443,14 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-slate-150/80 bg-slate-50 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4 w-12 text-center no-print">
+                    <input
+                      type="checkbox"
+                      checked={filteredMemos.length > 0 && selectedMemoIds.length === filteredMemos.length}
+                      onChange={handleSelectAllChange}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="py-3 px-4">আইডি ও তারিখ</th>
                   <th className="py-3 px-4">মেমো ধরণ</th>
                   <th className="py-3 px-4">নাম ও ফোন</th>
@@ -1055,9 +1462,22 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                {filteredMemos.map((memo) => (
-                  <tr key={memo.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3.5 px-4">
+                {filteredMemos.map((memo) => {
+                  const isSelected = selectedMemoIds.includes(memo.id);
+                  return (
+                    <tr 
+                      key={memo.id} 
+                      className={`hover:bg-slate-50/50 transition-colors ${isSelected ? 'bg-indigo-50/30' : ''}`}
+                    >
+                      <td className="py-3.5 px-4 text-center no-print">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleSelectRow(memo.id)}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3.5 px-4">
                       <p className="font-mono font-bold text-indigo-600">{memo.id}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5">
                         {new Date(memo.created_at).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -1172,7 +1592,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -1614,194 +2034,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
 
             {/* Printable Frame Area */}
             <div className="p-8 md:p-12 overflow-y-auto max-h-[80vh] bg-slate-50">
-              <div 
-                id="print-invoice-area" 
-                className="bg-white mx-auto shadow-sm p-6 sm:p-10 border border-slate-200 rounded-lg max-w-2xl font-sans text-slate-800 relative overflow-hidden"
-              >
-                {/* Subtle company-branded semi-transparent watermark */}
-                <div className="print-watermark absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-[0.035] sm:opacity-[0.045]">
-                  <div className="transform -rotate-[35deg] text-center space-y-1 sm:space-y-2">
-                    <p className="text-4xl sm:text-6xl font-black tracking-widest uppercase text-slate-900 font-sans">
-                      RSGS GLOBAL
-                    </p>
-                    <p className="text-lg sm:text-xl font-extrabold tracking-wider uppercase text-indigo-900 font-sans">
-                      OFFICIAL INVOICE
-                    </p>
-                    <p className="text-[9px] sm:text-[10px] font-mono font-black tracking-widest text-slate-700">
-                      SECURE SYSTEM VERIFIED • NON-TAMPERABLE
-                    </p>
-                  </div>
-                </div>
-
-                {/* Invoice Stamp Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-200 pb-6">
-                  {/* Company Left Panel */}
-                  <div className="space-y-1.5">
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-1">
-                      <Building2 className="w-6 h-6 text-indigo-600 no-print" />
-                      <span>RSGS Global Solution Group</span>
-                    </h2>
-                    <p className="text-[10px] text-slate-500 font-extrabold tracking-widest uppercase">Digital Agency & Tech Training Institute</p>
-                    <div className="text-[10px] text-slate-450 leading-relaxed font-semibold">
-                      <p>সৈয়দ প্লাজা (২য় তলা), রাজ্জাক প্লাজা সংলগ্ন, ঢাকা (Syed Plaza 2nd Floor, Adjacent to Razzak Plaza, Dhaka)</p>
-                      <p>হোয়াটসঅ্যাপ / মোবাইল: ০১৭৪৮৫২৪৩৮১ (WhatsApp / Cell: +8801748524381)</p>
-                      <p>ইমেইল: support@rsgs.global | ওয়েব: www.rsgs.global</p>
-                    </div>
-                  </div>
-
-                  {/* Title Right Panel */}
-                  <div className="text-left sm:text-right space-y-1">
-                    <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-extrabold rounded-md uppercase tracking-wider">
-                      {selectedMemo.memo_type === 'customer' ? 'Customer Memo' : 'Student Memo'}
-                    </span>
-                    <h1 className="text-xl font-black text-slate-900 tracking-tight mt-1.5">মানি রিসিট / মেমো</h1>
-                    <p className="text-xs font-bold text-indigo-600 font-mono">Invoice NO: {selectedMemo.id}</p>
-                    <p className="text-[10px] text-slate-450 font-bold">
-                      Date: {new Date(selectedMemo.created_at).toLocaleDateString('bn-BD')} ({new Date(selectedMemo.created_at).toLocaleDateString('en-US')})
-                    </p>
-                  </div>
-                </div>
-
-                {/* Client Metadata details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6 text-xs bg-slate-50 p-4.5 rounded-xl border border-slate-100">
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">বিল প্রাপক (Invoiced To)</p>
-                    <p className="text-sm font-black text-slate-900">{selectedMemo.client_name}</p>
-                    {selectedMemo.memo_type === 'student' && selectedMemo.student_id && (
-                      <div className="mt-1">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          ID / Roll: {selectedMemo.student_id}
-                        </span>
-                      </div>
-                    )}
-                    {selectedMemo.phone && <p className="font-mono text-slate-600 font-semibold">Phone: {selectedMemo.phone}</p>}
-                    {selectedMemo.address && <p className="text-slate-500 font-semibold">Address: {selectedMemo.address}</p>}
-                  </div>
-                  
-                  <div className="space-y-1.5 text-left md:text-right">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">প্রস্তুতকারক (Issued By)</p>
-                    <p className="text-sm font-black text-slate-900">RSGS Billing Portal</p>
-                    <p className="text-slate-600 font-semibold">Operator: {selectedMemo.created_by_name}</p>
-                    <p className="text-slate-500 text-[10px] font-bold">সিস্টেম দ্বারা অনুমোদিত এবং সিঙ্কড।</p>
-                  </div>
-                </div>
-
-                {/* Services/Courses Table breakdown */}
-                <div className="my-6">
-                  <p className="text-[10px] text-slate-450 font-extrabold uppercase tracking-widest mb-2.5">অর্ডার বিবরণ (Service / Course Specifications)</p>
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                        <th className="py-2.5 px-3">ক্রমিক (Item)</th>
-                        <th className="py-2.5 px-3">সার্ভিস / কোর্সের বিবরণ</th>
-                        <th className="py-2.5 px-3 text-center">স্থায়িত্ব (Duration)</th>
-                        <th className="py-2.5 px-3 text-right">মূল্য (Price)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="py-3 px-3 font-mono font-bold">01</td>
-                        <td className="py-3 px-3">
-                          <p className="font-bold text-slate-900">{selectedMemo.service_type}</p>
-                          {selectedMemo.notes && <p className="text-[10px] text-slate-450 mt-1 leading-relaxed max-w-md italic">{selectedMemo.notes}</p>}
-                        </td>
-                        <td className="py-3 px-3 text-center font-bold text-slate-700">{selectedMemo.duration}</td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">৳{selectedMemo.total_amount.toLocaleString('bn-BD')}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Invoice Summary calculation block */}
-                <div className="border-t border-slate-200 pt-5 flex justify-end">
-                  <div className="w-full sm:w-64 space-y-2.5 text-xs">
-                    <div className="flex justify-between font-semibold text-slate-600">
-                      <span>মোট ফি (Total Amount):</span>
-                      <span className="font-mono">৳{selectedMemo.total_amount.toLocaleString('bn-BD')}</span>
-                    </div>
-                    
-                    <div className="flex justify-between font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
-                      <span>অগ্রিম প্রদান (Advanced Paid):</span>
-                      <span className="font-mono">৳{selectedMemo.advanced_amount.toLocaleString('bn-BD')}</span>
-                    </div>
-
-                    <div className={`flex justify-between font-extrabold px-2 py-1 rounded ${
-                      selectedMemo.due_amount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      <span>বকেয়া পরিমাণ (Remaining Due):</span>
-                      <span className="font-mono">৳{selectedMemo.due_amount.toLocaleString('bn-BD')}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Declaration terms / Signatures */}
-                <div className="mt-12 pt-6 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-6 text-[9px] text-slate-450 leading-relaxed">
-                  <div>
-                    <p className="font-extrabold uppercase tracking-wider text-slate-500 mb-1">শর্তাবলী / Terms & Conditions</p>
-                    <p>১. অগ্রিম প্রদানকৃত ফি কোনো অবস্থাতেই অফেরতযোগ্য।</p>
-                    <p>২. বকেয়া পরিশোধ সাপেক্ষে পূর্ণ সেবা চালু থাকবে।</p>
-                    <p>৩. এই রসিদটি ডিজিটাল সার্ভার দ্বারা তৈরি এবং সার্ভার থেকে সত্যতা যাচাইযোগ্য।</p>
-                  </div>
-
-                  {/* Verification QR Code Column */}
-                  <div className="flex flex-col items-center text-center justify-center border-y sm:border-y-0 sm:border-x border-slate-100 py-3 sm:py-0 px-2 bg-slate-50/50 rounded-lg">
-                    <div className="bg-white p-1 border border-slate-200 rounded-md shadow-3xs">
-                    <LocalQRCode 
-                      text={`${window.location.origin}?verify=${selectedMemo.id}`}
-                      className="w-16 h-16 object-contain"
-                    />
-                    </div>
-                    <p className="mt-1.5 text-[8px] font-black text-indigo-700 tracking-tight flex items-center gap-0.5">
-                      <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
-                      <span>রসিদ ভেরিফিকেশন কিউআর</span>
-                    </p>
-                    <p className="text-[7px] text-slate-400 font-mono mt-0.5 font-bold uppercase">Scan to Verify Invoice</p>
-
-                    {/* Copy Verification Link Button (Hidden in Print/PDF generation) */}
-                    <button
-                      onClick={() => handleCopyVerificationLink(selectedMemo.id)}
-                      data-html2canvas-ignore="true"
-                      className="print:hidden mt-2 px-2.5 py-1 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold rounded-md text-[8.5px] cursor-pointer flex items-center gap-1 transition-all border border-slate-200 shadow-3xs hover:shadow-2xs select-none hover:text-indigo-600"
-                      title="ভেরিফিকেশন লিঙ্ক কপি করুন (Copy Verification Link)"
-                    >
-                      {copiedLinkId === selectedMemo.id ? (
-                        <>
-                          <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
-                          <span className="text-emerald-600 font-black">লিঙ্ক কপি হয়েছে!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3 text-slate-400 shrink-0 animate-pulse" />
-                          <span>লিঙ্ক কপি করুন</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div className="flex flex-col items-center justify-end space-y-1">
-                      {selectedMemo.signature_data ? (
-                        <img 
-                          src={selectedMemo.signature_data} 
-                          alt="Customer Signature" 
-                          className="max-h-12 max-w-[120px] object-contain border border-slate-100 rounded p-0.5 bg-white mb-1"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="h-12 w-28 border-b border-slate-200 border-dashed" />
-                      )}
-                      <p className="text-[10px] font-bold text-slate-600">গ্রাহক / ছাত্রের স্বাক্ষর</p>
-                    </div>
-
-                    <div className="flex flex-col items-center justify-end space-y-1">
-                      <div className="h-12 w-28 border-b border-slate-200 border-dashed flex items-end justify-center pb-1">
-                        <span className="text-[8px] font-mono text-slate-300 font-bold">Authorized</span>
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-600">কর্তৃপক্ষের স্বাক্ষর</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {renderInvoiceArea(selectedMemo, false)}
 
               {/* Dedicated WhatsApp & File Share Actions Panel (Visible in preview, excluded from prints) */}
               <div className="max-w-2xl mx-auto mt-6 bg-white border border-slate-150 rounded-xl p-5 shadow-xs no-print space-y-4 animate-fade-in">
@@ -1860,6 +2093,18 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           </div>
         </div>
       )}
+
+      {/* Hidden container for batch rendering */}
+      <div 
+        className="fixed pointer-events-none -z-50 overflow-hidden" 
+        style={{ width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }}
+      >
+        {memos.filter(m => selectedMemoIds.includes(m.id)).map(memo => (
+          <div key={`batch-container-${memo.id}`} style={{ width: '800px', margin: '0 0 40px 0', backgroundColor: '#ffffff' }}>
+            {renderInvoiceArea(memo, true)}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

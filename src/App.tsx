@@ -145,11 +145,44 @@ export default function App() {
       await new Promise((resolve) => setTimeout(resolve, 400));
 
       const canvas = await html2canvas(element, {
-        scale: 2, // 2x density for extra high class crispness
+        scale: 1.5, // 1.5x density is optimal for mobile devices and high crispness
         useCORS: true,
-        logging: true, // Enable html2canvas internal logs for deeper debugging
-        backgroundColor: '#ffffff'
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.scrollWidth || 800,
+        windowHeight: element.scrollHeight || 1200,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('verified-invoice-pdf-area');
+          if (clonedElement) {
+            clonedElement.style.transform = 'none';
+            clonedElement.style.margin = '0';
+            clonedElement.style.position = 'relative';
+            clonedElement.style.left = '0';
+            clonedElement.style.top = '0';
+            clonedElement.style.width = '800px';
+            clonedElement.style.maxWidth = 'none';
+            clonedElement.style.height = 'auto';
+
+            // Ensure offscreen container parent is made relative & visible during render cloned phase
+            const parent = clonedElement.parentElement;
+            if (parent) {
+              parent.style.position = 'relative';
+              parent.style.left = '0';
+              parent.style.top = '0';
+              parent.style.opacity = '1';
+              parent.style.overflow = 'visible';
+              parent.style.height = 'auto';
+            }
+          }
+        }
       });
+
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        throw new Error('Canvas rendering resulted in an empty or invalid size.');
+      }
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
