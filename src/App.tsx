@@ -524,6 +524,24 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Legacy Record Warning (Older than 90 days) */}
+              {verifiedMemo && (Date.now() - new Date(verifiedMemo.created_at).getTime() > 90 * 24 * 60 * 60 * 1000) && (
+                <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-4 flex items-start gap-3">
+                  <span className="p-1.5 bg-amber-500 text-slate-950 rounded-lg shrink-0 mt-0.5">
+                    <AlertCircle className="w-4 h-4 font-black" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-amber-400">পুরনো মেমো সতর্কতা (Legacy Record Warning)</h4>
+                    <p className="text-[10px] text-slate-300 font-semibold mt-1 leading-relaxed">
+                      এই মেমোটি ৯০ দিনের বেশি পুরনো। পুরনো রেকর্ডের সঠিকতা যাচাই বা যেকোনো মেমো সংক্রান্ত জটিলতায় অনুগ্রহ করে সহায়তার জন্য কর্তৃপক্ষের সাথে যোগাযোগ করুন।
+                    </p>
+                    <p className="text-[9px] text-amber-500/80 font-mono mt-1.5 font-bold">
+                      This invoice is older than 90 days. For legacy records support, please contact the administrator.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Memo Verified Details Grid */}
               <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-4 text-xs">
