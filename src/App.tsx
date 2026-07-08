@@ -152,8 +152,8 @@ export default function App() {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: element.scrollWidth || 800,
-        windowHeight: element.scrollHeight || 1200,
+        windowWidth: 800,
+        windowHeight: 1200,
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('verified-invoice-pdf-area');
           if (clonedElement) {
@@ -462,13 +462,35 @@ export default function App() {
               {/* Media print custom CSS styling injection for verification portal */}
               <style>{`
                 @media print {
-                  /* Set absolute pristine print background */
-                  body {
+                  /* Force standard system font loading, rendering metrics & scaling normalization */
+                  * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    text-rendering: optimizeLegibility !important;
+                    -webkit-font-smoothing: antialiased !important;
+                    -moz-osx-font-smoothing: grayscale !important;
+                    box-sizing: border-box !important;
+                  }
+
+                  html, body {
+                    width: 210mm !important;
+                    height: auto !important;
+                    margin: 0 auto !important;
+                    padding: 0 !important;
                     background: #ffffff !important;
                     color: #000000 !important;
-                    font-size: 11pt;
-                    margin: 0 !important;
-                    padding: 0 !important;
+                    font-family: 'Inter', 'Space Grotesk', system-ui, -apple-system, sans-serif !important;
+                    font-size: 11pt !important;
+                    transform: none !important;
+                    zoom: 1 !important;
+                  }
+
+                  /* Prevent layout and text truncation across scaling levels */
+                  td, th, p, span, h1, h2, h3, h4, div {
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    white-space: normal !important;
+                    overflow: visible !important;
                   }
                   
                   /* Hide all elements by default on paper */
@@ -491,18 +513,21 @@ export default function App() {
                     visibility: visible !important;
                   }
 
-                  /* Position the invoice beautifully at the absolute top-left corner of the page */
+                  /* Centering print invoice area and establishing exact dimensions */
                   #verified-invoice-pdf-area {
                     display: block !important;
-                    position: absolute !important;
-                    left: 0 !important;
-                    top: 0 !important;
-                    width: 100% !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
+                    position: relative !important;
+                    width: 180mm !important;
+                    max-width: 100% !important;
+                    margin: 0 auto !important;
+                    padding: 10mm !important;
                     border: none !important;
                     box-shadow: none !important;
                     background: #ffffff !important;
+                    transform: none !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    top: 0 !important;
                   }
 
                   /* Set precise paper margins and dimension size rules */
@@ -634,6 +659,14 @@ export default function App() {
                     <span>সরাসরি প্রিন্ট করুন (Print)</span>
                   </button>
                 </div>
+
+                {/* Print Auto-format Help Text */}
+                <p className="text-[10px] text-slate-500 font-medium text-center leading-relaxed no-print pt-1">
+                  💡 প্রিন্ট করার সময় সিস্টেমটি স্বয়ংক্রিয়ভাবে পেজটিকে A4 সাইজে সাজিয়ে নিবে।
+                  <span className="block text-[9px] text-slate-600 font-mono mt-0.5">
+                    The system will automatically format the layout for perfect A4 print-ready output.
+                  </span>
+                </p>
 
                 {/* Status Messages for PDF download */}
                 {pdfDownloadMessage.type && (
