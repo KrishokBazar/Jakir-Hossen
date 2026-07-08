@@ -72,6 +72,7 @@ export default function App() {
   const [verificationAttempted, setVerificationAttempted] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [pdfDownloadMessage, setPdfDownloadMessage] = useState<{ type: 'success' | 'error' | 'info' | null, text: string }>({ type: null, text: '' });
+  const [showDiagnosticPreview, setShowDiagnosticPreview] = useState(false);
 
   // Downloads the invoice PDF to the user's device from the verification portal
   const handleDownloadVerifiedPDF = async () => {
@@ -145,11 +146,11 @@ export default function App() {
       await new Promise((resolve) => setTimeout(resolve, 400));
 
       const canvas = await html2canvas(element, {
-        scale: 1.5, // 1.5x density is optimal for mobile devices and high crispness
+        scale: 2, // 2x density for super high quality rendering
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#ffffff',
-        logging: false,
+        logging: true,
         scrollX: 0,
         scrollY: 0,
         windowWidth: 800,
@@ -157,25 +158,25 @@ export default function App() {
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('verified-invoice-pdf-area');
           if (clonedElement) {
+            // Isolate the element to body, avoiding any off-screen, scaled, or scroll limitations
+            clonedDoc.body.innerHTML = '';
+            clonedDoc.body.appendChild(clonedElement);
+            clonedDoc.body.style.margin = '0';
+            clonedDoc.body.style.padding = '0';
+            clonedDoc.body.style.background = '#ffffff';
+
             clonedElement.style.transform = 'none';
-            clonedElement.style.margin = '0';
+            clonedElement.style.margin = '0 auto';
             clonedElement.style.position = 'relative';
             clonedElement.style.left = '0';
             clonedElement.style.top = '0';
             clonedElement.style.width = '800px';
-            clonedElement.style.maxWidth = 'none';
+            clonedElement.style.maxWidth = '100%';
             clonedElement.style.height = 'auto';
-
-            // Ensure offscreen container parent is made relative & visible during render cloned phase
-            const parent = clonedElement.parentElement;
-            if (parent) {
-              parent.style.position = 'relative';
-              parent.style.left = '0';
-              parent.style.top = '0';
-              parent.style.opacity = '1';
-              parent.style.overflow = 'visible';
-              parent.style.height = 'auto';
-            }
+            clonedElement.style.display = 'block';
+            clonedElement.style.overflow = 'visible';
+            clonedElement.style.boxShadow = 'none';
+            clonedElement.style.border = 'none';
           }
         }
       });
@@ -626,7 +627,7 @@ export default function App() {
               </div>
 
               {/* PDF & Direct Print buttons */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     onClick={handleDownloadVerifiedPDF}
@@ -659,6 +660,16 @@ export default function App() {
                     <span>সরাসরি প্রিন্ট করুন (Print)</span>
                   </button>
                 </div>
+
+                {/* Diagnostic Export Mode Trigger */}
+                <button
+                  onClick={() => setShowDiagnosticPreview(true)}
+                  disabled={isGeneratingPDF}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-[11px] flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-indigo-500/30 bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 hover:text-indigo-200 active:scale-[0.98]"
+                >
+                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>সমস্যা হচ্ছে? ডায়াগনস্টিক এক্সপোর্ট প্রিভিউ (Diagnostic Mode)</span>
+                </button>
 
                 {/* Print Auto-format Help Text */}
                 <p className="text-[10px] text-slate-500 font-medium text-center leading-relaxed no-print pt-1">
@@ -756,16 +767,51 @@ export default function App() {
           </div>
         </div>
 
-        {/* Offscreen element for generating PDF */}
+        {/* Offscreen element for generating PDF or Diagnostic preview */}
         {verifiedMemo && (
           <div 
-            className="fixed pointer-events-none -z-50 overflow-hidden" 
-            style={{ width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }}
+            className={showDiagnosticPreview 
+              ? "fixed inset-0 bg-slate-900/90 backdrop-blur-xs z-50 overflow-y-auto p-4 flex flex-col items-center justify-start gap-4 animate-fade-in"
+              : "fixed pointer-events-none -z-50 overflow-hidden"
+            } 
+            style={showDiagnosticPreview 
+              ? { display: 'flex' }
+              : { width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }
+            }
           >
+            {showDiagnosticPreview && (
+              <div className="bg-slate-800 text-white p-4 rounded-xl max-w-2xl w-full flex flex-col sm:flex-row justify-between items-center gap-3 shadow-lg border border-slate-700 animate-fade-in-down no-print mt-6 shrink-0">
+                <div className="space-y-1 text-center sm:text-left">
+                  <h3 className="text-xs font-black text-indigo-400 flex items-center justify-center sm:justify-start gap-1">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>ডায়াগনস্টিক এক্সপোর্ট প্রিভিউ (Diagnostic Preview)</span>
+                  </h3>
+                  <p className="text-[10px] text-slate-300 font-semibold leading-relaxed">
+                    এই মোডে রসিদটি সরাসরি স্ক্রিনে রেন্ডার করা হয়েছে যাতে মোবাইল ব্রাউজারের কোনো এরর ছাড়া পারফেক্ট পিডিএফ তৈরি হতে পারে।
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleDownloadVerifiedPDF}
+                    disabled={isGeneratingPDF}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-all active:scale-95"
+                  >
+                    {isGeneratingPDF ? 'তৈরি হচ্ছে...' : 'পিডিএফ ডাউনলোড'}
+                  </button>
+                  <button
+                    onClick={() => setShowDiagnosticPreview(false)}
+                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-650 text-slate-200 rounded-lg text-[10px] font-bold cursor-pointer transition-all active:scale-95"
+                  >
+                    বন্ধ করুন (Close)
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div 
               id="verified-invoice-pdf-area" 
-              className="bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden"
-              style={{ width: '800px' }}
+              className={`bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden ${showDiagnosticPreview ? 'shadow-2xl my-6' : ''}`}
+              style={{ width: '800px', minWidth: '800px' }}
             >
               {/* Subtle company-branded semi-transparent watermark */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-[0.045]">

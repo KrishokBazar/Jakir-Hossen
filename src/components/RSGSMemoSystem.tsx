@@ -558,11 +558,11 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
       await new Promise((resolve) => setTimeout(resolve, 400));
 
       const canvas = await html2canvas(element, {
-        scale: 1.5, // 1.5x density is optimal for mobile devices and high crispness
+        scale: 2, // 2x density for pristine printing/saving sharpness
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#ffffff',
-        logging: false,
+        logging: true,
         scrollX: 0,
         scrollY: 0,
         windowWidth: 800,
@@ -570,23 +570,25 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('print-invoice-area');
           if (clonedElement) {
+            // Isolate elements to body of cloned frame to bypass parent overflow, position or scroll limitations
+            clonedDoc.body.innerHTML = '';
+            clonedDoc.body.appendChild(clonedElement);
+            clonedDoc.body.style.margin = '0';
+            clonedDoc.body.style.padding = '0';
+            clonedDoc.body.style.background = '#ffffff';
+
             clonedElement.style.transform = 'none';
-            clonedElement.style.margin = '0';
+            clonedElement.style.margin = '0 auto';
             clonedElement.style.position = 'relative';
             clonedElement.style.left = '0';
             clonedElement.style.top = '0';
             clonedElement.style.width = '800px';
-            clonedElement.style.maxWidth = 'none';
+            clonedElement.style.maxWidth = '100%';
             clonedElement.style.height = 'auto';
-
-            // Ensure any scrollable parent containers in the cloned DOM do not clip the content
-            let parent = clonedElement.parentElement;
-            while (parent) {
-              parent.style.overflow = 'visible';
-              parent.style.maxHeight = 'none';
-              parent.style.height = 'auto';
-              parent = parent.parentElement;
-            }
+            clonedElement.style.display = 'block';
+            clonedElement.style.overflow = 'visible';
+            clonedElement.style.boxShadow = 'none';
+            clonedElement.style.border = 'none';
           }
         }
       });
@@ -702,11 +704,11 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         }
 
         const canvas = await html2canvas(element, {
-          scale: 1.5, // 1.5x density is optimal for high quality
+          scale: 2, // 2x density for pristine printing/saving sharpness
           useCORS: true,
-          allowTaint: false,
+          allowTaint: true,
           backgroundColor: '#ffffff',
-          logging: false,
+          logging: true,
           scrollX: 0,
           scrollY: 0,
           windowWidth: 800,
@@ -714,23 +716,25 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           onclone: (clonedDoc) => {
             const clonedElement = clonedDoc.getElementById(`batch-invoice-area-${memoId}`);
             if (clonedElement) {
+              // Isolate elements to body of cloned frame to bypass parent overflow, position or scroll limitations
+              clonedDoc.body.innerHTML = '';
+              clonedDoc.body.appendChild(clonedElement);
+              clonedDoc.body.style.margin = '0';
+              clonedDoc.body.style.padding = '0';
+              clonedDoc.body.style.background = '#ffffff';
+
               clonedElement.style.transform = 'none';
-              clonedElement.style.margin = '0';
+              clonedElement.style.margin = '0 auto';
               clonedElement.style.position = 'relative';
               clonedElement.style.left = '0';
               clonedElement.style.top = '0';
               clonedElement.style.width = '800px';
-              clonedElement.style.maxWidth = 'none';
+              clonedElement.style.maxWidth = '100%';
               clonedElement.style.height = 'auto';
-
-              // Ensure any scrollable parent containers in the cloned DOM do not clip the content
-              let parent = clonedElement.parentElement;
-              while (parent) {
-                parent.style.overflow = 'visible';
-                parent.style.maxHeight = 'none';
-                parent.style.height = 'auto';
-                parent = parent.parentElement;
-              }
+              clonedElement.style.display = 'block';
+              clonedElement.style.overflow = 'visible';
+              clonedElement.style.boxShadow = 'none';
+              clonedElement.style.border = 'none';
             }
           }
         });
