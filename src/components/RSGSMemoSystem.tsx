@@ -5,6 +5,7 @@ import { useNotification } from './NotificationContext';
 import SignaturePad from './SignaturePad';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { LocalQRCode } from './LocalQRCode';
 import { 
   FileText, Plus, Search, Printer, Trash2, Edit, PlusCircle, 
   User, BookOpen, Briefcase, Clock, DollarSign, CheckCircle, 
@@ -486,6 +487,61 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
   // Helper to generate a crisp A4 PDF Blob from invoice HTML
   const generatePDFBlob = async (): Promise<Blob | null> => {
     const element = document.getElementById('print-invoice-area');
+    
+    // Detailed console logging diagnostic block to capture exact element state
+    console.log('=== PDF Capture Element Diagnostic ===');
+    console.log('Target Element ID: print-invoice-area');
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      console.log('Element found in DOM: YES');
+      console.log('Bounding Rect (Viewport Relative):', {
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left,
+        bottom: rect.bottom,
+        right: rect.right
+      });
+      console.log('Client/Offset dimensions:', {
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        offsetWidth: element.offsetWidth,
+        offsetHeight: element.offsetHeight,
+        scrollWidth: element.scrollWidth,
+        scrollHeight: element.scrollHeight
+      });
+      console.log('Computed Styles:', {
+        display: style.display,
+        position: style.position,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        transform: style.transform,
+        zIndex: style.zIndex,
+        overflow: style.overflow
+      });
+
+      // Traverse ancestors to check for hidden container issues
+      let parent = element.parentElement;
+      while (parent) {
+        const pStyle = window.getComputedStyle(parent);
+        if (pStyle.display === 'none' || pStyle.visibility === 'hidden' || parseFloat(pStyle.opacity) === 0) {
+          console.warn('Hidden Ancestor Found! html2canvas might fail or produce a blank image:', {
+            tagName: parent.tagName,
+            id: parent.id,
+            className: parent.className,
+            display: pStyle.display,
+            visibility: pStyle.visibility,
+            opacity: pStyle.opacity
+          });
+        }
+        parent = parent.parentElement;
+      }
+    } else {
+      console.error('Element found in DOM: NO! print-invoice-area is missing from the document tree.');
+    }
+    console.log('=======================================');
+
     if (!element) {
       showNotification('ত্রুটি', 'রশিদ ভিউ পাওয়া যায়নি।', 'danger');
       return null;
@@ -499,7 +555,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
       const canvas = await html2canvas(element, {
         scale: 2, // 2x density for extra high class crispness
         useCORS: true,
-        allowTaint: true,
+        logging: true, // Enable html2canvas internal logs for deeper debugging
         backgroundColor: '#ffffff'
       });
 
@@ -1690,13 +1746,10 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
                   {/* Verification QR Code Column */}
                   <div className="flex flex-col items-center text-center justify-center border-y sm:border-y-0 sm:border-x border-slate-100 py-3 sm:py-0 px-2 bg-slate-50/50 rounded-lg">
                     <div className="bg-white p-1 border border-slate-200 rounded-md shadow-3xs">
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?verify=${selectedMemo.id}`)}`}
-                        alt="Verification QR Code"
-                        className="w-16 h-16 object-contain"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                      />
+                    <LocalQRCode 
+                      text={`${window.location.origin}?verify=${selectedMemo.id}`}
+                      className="w-16 h-16 object-contain"
+                    />
                     </div>
                     <p className="mt-1.5 text-[8px] font-black text-indigo-700 tracking-tight flex items-center gap-0.5">
                       <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />

@@ -15,6 +15,7 @@ import DailyOperationsLog from './components/DailyOperationsLog';
 import LiveChat from './components/LiveChat';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { LocalQRCode } from './components/LocalQRCode';
 import CofounderWorkspace from './components/CofounderWorkspace';
 import OfficeWorkspace from './components/OfficeWorkspace';
 import RSGSMemoSystem from './components/RSGSMemoSystem';
@@ -77,6 +78,61 @@ export default function App() {
     if (!verifiedMemo) return;
     
     const element = document.getElementById('verified-invoice-pdf-area');
+    
+    // Detailed console logging diagnostic block to capture exact element state
+    console.log('=== PDF Capture Element Diagnostic ===');
+    console.log('Target Element ID: verified-invoice-pdf-area');
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      console.log('Element found in DOM: YES');
+      console.log('Bounding Rect (Viewport Relative):', {
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left,
+        bottom: rect.bottom,
+        right: rect.right
+      });
+      console.log('Client/Offset dimensions:', {
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        offsetWidth: element.offsetWidth,
+        offsetHeight: element.offsetHeight,
+        scrollWidth: element.scrollWidth,
+        scrollHeight: element.scrollHeight
+      });
+      console.log('Computed Styles:', {
+        display: style.display,
+        position: style.position,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        transform: style.transform,
+        zIndex: style.zIndex,
+        overflow: style.overflow
+      });
+
+      // Traverse ancestors to check for hidden container issues
+      let parent = element.parentElement;
+      while (parent) {
+        const pStyle = window.getComputedStyle(parent);
+        if (pStyle.display === 'none' || pStyle.visibility === 'hidden' || parseFloat(pStyle.opacity) === 0) {
+          console.warn('Hidden Ancestor Found! html2canvas might fail or produce a blank image:', {
+            tagName: parent.tagName,
+            id: parent.id,
+            className: parent.className,
+            display: pStyle.display,
+            visibility: pStyle.visibility,
+            opacity: pStyle.opacity
+          });
+        }
+        parent = parent.parentElement;
+      }
+    } else {
+      console.error('Element found in DOM: NO! verified-invoice-pdf-area is missing from the document tree.');
+    }
+    console.log('=======================================');
+
     if (!element) {
       setPdfDownloadMessage({ type: 'error', text: 'রসিদ ভিউ পাওয়া যায়নি।' });
       return;
@@ -91,7 +147,7 @@ export default function App() {
       const canvas = await html2canvas(element, {
         scale: 2, // 2x density for extra high class crispness
         useCORS: true,
-        allowTaint: true,
+        logging: true, // Enable html2canvas internal logs for deeper debugging
         backgroundColor: '#ffffff'
       });
 
@@ -615,7 +671,10 @@ export default function App() {
 
         {/* Offscreen element for generating PDF */}
         {verifiedMemo && (
-          <div className="absolute left-[-9999px] top-[-9999px]" style={{ width: '800px' }}>
+          <div 
+            className="fixed left-0 top-0 opacity-0 pointer-events-none -z-50 overflow-hidden" 
+            style={{ width: '800px', height: 'auto' }}
+          >
             <div 
               id="verified-invoice-pdf-area" 
               className="bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden"
@@ -748,12 +807,9 @@ export default function App() {
                 {/* Verification QR Code Column */}
                 <div className="flex flex-col items-center text-center justify-center border-x border-slate-100 px-2 bg-slate-50/50 rounded-lg">
                   <div className="bg-white p-1 border border-slate-200 rounded-md shadow-3xs">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?verify=${verifiedMemo.id}`)}`}
-                      alt="Verification QR Code"
+                    <LocalQRCode 
+                      text={`${window.location.origin}?verify=${verifiedMemo.id}`}
                       className="w-16 h-16 object-contain"
-                      crossOrigin="anonymous"
-                      referrerPolicy="no-referrer"
                     />
                   </div>
                   <p className="mt-1.5 text-[8px] font-black text-indigo-700 tracking-tight flex items-center gap-0.5">
