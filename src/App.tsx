@@ -73,6 +73,24 @@ export default function App() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [pdfDownloadMessage, setPdfDownloadMessage] = useState<{ type: 'success' | 'error' | 'info' | null, text: string }>({ type: null, text: '' });
   const [showDiagnosticPreview, setShowDiagnosticPreview] = useState(false);
+  const [diagnosticScale, setDiagnosticScale] = useState(1);
+
+  useEffect(() => {
+    if (!showDiagnosticPreview) return;
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < 840) {
+        // scale it to fit within width with some padding
+        const newScale = (width - 32) / 800;
+        setDiagnosticScale(Math.max(0.35, Math.min(1, newScale)));
+      } else {
+        setDiagnosticScale(1);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [showDiagnosticPreview]);
 
   // Downloads the invoice PDF to the user's device from the verification portal
   const handleDownloadVerifiedPDF = async () => {
@@ -148,7 +166,7 @@ export default function App() {
       const canvas = await html2canvas(element, {
         scale: 2, // 2x density for super high quality rendering
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         backgroundColor: '#ffffff',
         logging: true,
         scrollX: 0,
@@ -158,25 +176,34 @@ export default function App() {
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('verified-invoice-pdf-area');
           if (clonedElement) {
-            // Isolate the element to body, avoiding any off-screen, scaled, or scroll limitations
-            clonedDoc.body.innerHTML = '';
-            clonedDoc.body.appendChild(clonedElement);
-            clonedDoc.body.style.margin = '0';
-            clonedDoc.body.style.padding = '0';
-            clonedDoc.body.style.background = '#ffffff';
-
             clonedElement.style.transform = 'none';
             clonedElement.style.margin = '0 auto';
             clonedElement.style.position = 'relative';
             clonedElement.style.left = '0';
             clonedElement.style.top = '0';
             clonedElement.style.width = '800px';
+            clonedElement.style.minWidth = '800px';
             clonedElement.style.maxWidth = '100%';
             clonedElement.style.height = 'auto';
             clonedElement.style.display = 'block';
             clonedElement.style.overflow = 'visible';
             clonedElement.style.boxShadow = 'none';
             clonedElement.style.border = 'none';
+            clonedElement.style.visibility = 'visible';
+            clonedElement.style.opacity = '1';
+
+            // Ensure parent wrappers of the cloned element are also visible and do not hide overflow
+            let parent = clonedElement.parentElement;
+            while (parent && parent !== clonedDoc.body) {
+              parent.style.position = 'static';
+              parent.style.overflow = 'visible';
+              parent.style.height = 'auto';
+              parent.style.maxHeight = 'none';
+              parent.style.opacity = '1';
+              parent.style.visibility = 'visible';
+              parent.style.transform = 'none';
+              parent = parent.parentElement;
+            }
           }
         }
       });
@@ -474,9 +501,9 @@ export default function App() {
                   }
 
                   html, body {
-                    width: 210mm !important;
+                    width: 100% !important;
                     height: auto !important;
-                    margin: 0 auto !important;
+                    margin: 0 !important;
                     padding: 0 !important;
                     background: #ffffff !important;
                     color: #000000 !important;
@@ -508,17 +535,34 @@ export default function App() {
                     display: none !important;
                   }
 
-                  /* Overwrite visibility for ONLY the printable verified invoice wrapper and its entire tree */
+                  /* Overwrite visibility for ONLY the printable verified invoice wrapper, its parent wrapper, and their trees */
+                  #verified-invoice-parent,
+                  #verified-invoice-parent *,
                   #verified-invoice-pdf-area, 
                   #verified-invoice-pdf-area * {
                     visibility: visible !important;
+                  }
+
+                  /* Clean layout resetting on parents during printing to avoid dark background or offscreen clipping */
+                  #verified-invoice-parent {
+                    position: static !important;
+                    display: block !important;
+                    background: transparent !important;
+                    backdrop-filter: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    width: 100% !important;
+                    height: auto !important;
+                    overflow: visible !important;
+                    box-shadow: none !important;
+                    transform: none !important;
                   }
 
                   /* Centering print invoice area and establishing exact dimensions */
                   #verified-invoice-pdf-area {
                     display: block !important;
                     position: relative !important;
-                    width: 180mm !important;
+                    width: 190mm !important;
                     max-width: 100% !important;
                     margin: 0 auto !important;
                     padding: 10mm !important;
@@ -534,7 +578,7 @@ export default function App() {
                   /* Set precise paper margins and dimension size rules */
                   @page {
                     size: A4 portrait;
-                    margin: 15mm 15mm 15mm 15mm;
+                    margin: 10mm 10mm 10mm 10mm; /* Automatically calibrated safe 10mm margin for mobile print clients */
                   }
                 }
               `}</style>
@@ -770,13 +814,14 @@ export default function App() {
         {/* Offscreen element for generating PDF or Diagnostic preview */}
         {verifiedMemo && (
           <div 
+            id="verified-invoice-parent"
             className={showDiagnosticPreview 
-              ? "fixed inset-0 bg-slate-900/90 backdrop-blur-xs z-50 overflow-y-auto p-4 flex flex-col items-center justify-start gap-4 animate-fade-in"
-              : "fixed pointer-events-none -z-50 overflow-hidden"
+              ? "fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-50 overflow-y-auto p-4 flex flex-col items-center justify-start gap-4 animate-fade-in"
+              : "fixed pointer-events-none"
             } 
             style={showDiagnosticPreview 
               ? { display: 'flex' }
-              : { width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }
+              : { width: '800px', height: 'auto', position: 'fixed', top: '0', left: '0', opacity: '0.001', pointerEvents: 'none', zIndex: '-100' }
             }
           >
             {showDiagnosticPreview && (
@@ -809,10 +854,19 @@ export default function App() {
             )}
 
             <div 
-              id="verified-invoice-pdf-area" 
-              className={`bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden ${showDiagnosticPreview ? 'shadow-2xl my-6' : ''}`}
-              style={{ width: '800px', minWidth: '800px' }}
+              className={showDiagnosticPreview ? "w-full flex flex-col items-center justify-start py-4 max-w-full overflow-x-auto select-none" : ""}
+              style={showDiagnosticPreview && diagnosticScale < 1 ? { height: `${(800 * diagnosticScale) + 80}px`, minHeight: 'fit-content' } : {}}
             >
+              <div 
+                id="verified-invoice-pdf-area" 
+                className={`bg-white p-10 border border-slate-200 rounded-lg font-sans text-slate-800 relative overflow-hidden ${showDiagnosticPreview ? 'shadow-2xl my-4' : ''}`}
+                style={{ 
+                  width: '800px', 
+                  minWidth: '800px',
+                  transform: showDiagnosticPreview && diagnosticScale < 1 ? `scale(${diagnosticScale})` : 'none',
+                  transformOrigin: 'top center',
+                }}
+              >
               {/* Subtle company-branded semi-transparent watermark */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-[0.045]">
                 <div className="transform -rotate-[35deg] text-center space-y-2">
@@ -974,6 +1028,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         )}

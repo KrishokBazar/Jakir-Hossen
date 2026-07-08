@@ -560,7 +560,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
       const canvas = await html2canvas(element, {
         scale: 2, // 2x density for pristine printing/saving sharpness
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         backgroundColor: '#ffffff',
         logging: true,
         scrollX: 0,
@@ -570,25 +570,34 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('print-invoice-area');
           if (clonedElement) {
-            // Isolate elements to body of cloned frame to bypass parent overflow, position or scroll limitations
-            clonedDoc.body.innerHTML = '';
-            clonedDoc.body.appendChild(clonedElement);
-            clonedDoc.body.style.margin = '0';
-            clonedDoc.body.style.padding = '0';
-            clonedDoc.body.style.background = '#ffffff';
-
             clonedElement.style.transform = 'none';
             clonedElement.style.margin = '0 auto';
             clonedElement.style.position = 'relative';
             clonedElement.style.left = '0';
             clonedElement.style.top = '0';
             clonedElement.style.width = '800px';
+            clonedElement.style.minWidth = '800px';
             clonedElement.style.maxWidth = '100%';
             clonedElement.style.height = 'auto';
             clonedElement.style.display = 'block';
             clonedElement.style.overflow = 'visible';
             clonedElement.style.boxShadow = 'none';
             clonedElement.style.border = 'none';
+            clonedElement.style.visibility = 'visible';
+            clonedElement.style.opacity = '1';
+
+            // Ensure parent wrappers of the cloned element are also visible and do not hide overflow
+            let parent = clonedElement.parentElement;
+            while (parent && parent !== clonedDoc.body) {
+              parent.style.position = 'static';
+              parent.style.overflow = 'visible';
+              parent.style.height = 'auto';
+              parent.style.maxHeight = 'none';
+              parent.style.opacity = '1';
+              parent.style.visibility = 'visible';
+              parent.style.transform = 'none';
+              parent = parent.parentElement;
+            }
           }
         }
       });
@@ -706,7 +715,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
         const canvas = await html2canvas(element, {
           scale: 2, // 2x density for pristine printing/saving sharpness
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,
           backgroundColor: '#ffffff',
           logging: true,
           scrollX: 0,
@@ -716,25 +725,34 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           onclone: (clonedDoc) => {
             const clonedElement = clonedDoc.getElementById(`batch-invoice-area-${memoId}`);
             if (clonedElement) {
-              // Isolate elements to body of cloned frame to bypass parent overflow, position or scroll limitations
-              clonedDoc.body.innerHTML = '';
-              clonedDoc.body.appendChild(clonedElement);
-              clonedDoc.body.style.margin = '0';
-              clonedDoc.body.style.padding = '0';
-              clonedDoc.body.style.background = '#ffffff';
-
               clonedElement.style.transform = 'none';
               clonedElement.style.margin = '0 auto';
               clonedElement.style.position = 'relative';
               clonedElement.style.left = '0';
               clonedElement.style.top = '0';
               clonedElement.style.width = '800px';
+              clonedElement.style.minWidth = '800px';
               clonedElement.style.maxWidth = '100%';
               clonedElement.style.height = 'auto';
               clonedElement.style.display = 'block';
               clonedElement.style.overflow = 'visible';
               clonedElement.style.boxShadow = 'none';
               clonedElement.style.border = 'none';
+              clonedElement.style.visibility = 'visible';
+              clonedElement.style.opacity = '1';
+
+              // Ensure parent wrappers of the cloned element are also visible and do not hide overflow
+              let parent = clonedElement.parentElement;
+              while (parent && parent !== clonedDoc.body) {
+                parent.style.position = 'static';
+                parent.style.overflow = 'visible';
+                parent.style.height = 'auto';
+                parent.style.maxHeight = 'none';
+                parent.style.opacity = '1';
+                parent.style.visibility = 'visible';
+                parent.style.transform = 'none';
+                parent = parent.parentElement;
+              }
             }
           }
         });
@@ -1141,9 +1159,9 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           }
 
           html, body {
-            width: 210mm !important;
+            width: 100% !important;
             height: auto !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
@@ -1188,7 +1206,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           #print-invoice-area {
             display: block !important;
             position: relative !important;
-            width: 180mm !important;
+            width: 190mm !important;
             max-width: 100% !important;
             margin: 0 auto !important;
             padding: 10mm !important;
@@ -1204,7 +1222,7 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
           /* Set precise paper margins and dimension size rules */
           @page {
             size: A4 portrait;
-            margin: 15mm 15mm 15mm 15mm;
+            margin: 10mm 10mm 10mm 10mm; /* Automatically calibrated safe 10mm margin for mobile print clients */
           }
 
           /* Ensure exact background and text rendering on standard office paper printers */
@@ -2125,8 +2143,8 @@ export default function RSGSMemoSystem({ user }: RSGSMemoSystemProps) {
 
       {/* Hidden container for batch rendering */}
       <div 
-        className="fixed pointer-events-none -z-50 overflow-hidden" 
-        style={{ width: '800px', height: 'auto', left: '-9999px', top: '-9999px' }}
+        className="fixed pointer-events-none" 
+        style={{ width: '800px', height: 'auto', position: 'fixed', top: '0', left: '0', opacity: '0.001', zIndex: '-100', overflow: 'hidden' }}
       >
         {memos.filter(m => selectedMemoIds.includes(m.id)).map(memo => (
           <div key={`batch-container-${memo.id}`} style={{ width: '800px', margin: '0 0 40px 0', backgroundColor: '#ffffff' }}>
